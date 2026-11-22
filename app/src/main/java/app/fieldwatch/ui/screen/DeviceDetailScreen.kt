@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -120,6 +121,9 @@ fun DeviceDetailScreen(
     LaunchedEffect(device.key) { vm.refreshPlaceStreets(device) }
     val familyHint by vm.familyHint.collectAsStateWithLifecycle()
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val phoneLat by remember { derivedStateOf { ui.phoneLat } }
+    val phoneLon by remember { derivedStateOf { ui.phoneLon } }
+    val fleets by remember { derivedStateOf { ui.fleets } }
     var catalogRequest by remember(device.key) { mutableStateOf(false) }
     LaunchedEffect(device.key, device.name, device.kind, device.fleetIds) {
         catalogRequest = vm.catalogRequestVisible(device)
@@ -717,8 +721,6 @@ fun DeviceDetailScreen(
                         )
                     }
                 }
-                val phoneLat = ui.phoneLat
-                val phoneLon = ui.phoneLon
                 if (PayloadLocation.validCoord(device.payloadLat, device.payloadLon)) {
                     Geo.screenCoord(device.payloadLat, device.payloadLon, demoMode)?.let {
                         Meta(LanguageText.text("ui.aircraft.position"), it)
@@ -741,8 +743,7 @@ fun DeviceDetailScreen(
                         Text(range, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                val fleets = ui.fleets
-                val decoded = remember(device.key, device.facts, device.fleetIds) {
+                val decoded = remember(device.key, device.facts, device.fleetIds, fleets) {
                     SignatureFieldDecoder.decodeSighting(device, fleets)
                 }
                 val mapped = device.fleetIds.mapNotNull { id -> fleets.find { it.id == id && it.decode != null } }
