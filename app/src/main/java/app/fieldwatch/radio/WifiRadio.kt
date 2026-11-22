@@ -31,7 +31,7 @@ class WifiRadio(
     @Volatile private var worker: Handler? = null
     private var workerThread: HandlerThread? = null
     private var registered = false
-    private val parsedByBssid = HashMap<String, ParsedResult>()
+    private val ieParses = ParseCache<IeParse>()
     private val lastEmitAt = AtomicLong(0L)
     private val awaitingScan = AtomicBoolean(false)
     private val nextAllowedAt = AtomicLong(0L)
@@ -83,8 +83,10 @@ class WifiRadio(
             }
         }
         registered = true
-        handler.post { guardResults { emitResults(fresh = false) } }
-        requestScan(minIntervalMs = 0L)
+        handler.post {
+            guardResults { emitResults(fresh = false) }
+            requestScan(minIntervalMs = 0L)
+        }
     }
 
     fun stop() {
@@ -178,15 +180,16 @@ class WifiRadio(
             awaitingScan.set(false)
             var count = 0
             val batch = ArrayList<Observation>(results.size)
-            val seen = HashMap<String, ParsedResult>(results.size * 2)
+            val seen = HashSet<String>(results.size * 2)
             for (result in results) {
                 val obs = try {
                     if (result.BSSID.isNullOrBlank()) continue
-                    val cached = synchronized(parsedByBssid) { parsedByBssid[result.BSSID] }
-                        ?.takeIf { it.timestamp == result.timestamp }
-                    val parsed = cached ?: ParsedResult(result.timestamp, toObservation(result, nowWall, isFresh))
-                    seen[result.BSSID] = parsed
-                    if (cached == null) parsed.observation else parsed.observation.copy(at = nowWall, fresh = isFresh)
+                    seen += result.BSSID
+                    val ie = ieParses.getOrParse(result.BSSID, result.timestamp, result.capabilities) {
+                        val parsed = WifiIeParser.parse(result)
+                        IeParse(parsed, parsed.vendorIes.map { it.oui }.ifEmpty { vendorIeOuisOf(result) }.distinct())
+                    }
+                    toObservation(result, nowWall, isFresh, ie)
                 } catch (t: Throwable) {
                     Log.e(TAG, "scan result failed", t)
                     continue
@@ -199,10 +202,7 @@ class WifiRadio(
                     Log.e(TAG, "scan result failed", t)
                 }
             }
-            synchronized(parsedByBssid) {
-                parsedByBssid.clear()
-                parsedByBssid.putAll(seen)
-            }
+            ieParses.retainOnly(seen)
             try {
                 onScanFinished(count, isFresh)
             } catch (t: Throwable) {
@@ -220,7 +220,7 @@ class WifiRadio(
         }
     }
 
-    private class ParsedResult(val timestamp: Long, val observation: Observation)
+    private class IeParse(val parsed: WifiIeParser.Parsed, val vendorIeOuis: List<String>)
 
     private inline fun guardResults(block: () -> Unit) {
         try {
@@ -230,11 +230,11 @@ class WifiRadio(
         }
     }
 
-    private fun toObservation(result: ScanResult, nowWall: Long, fresh: Boolean): Observation {
+    private fun toObservation(result: ScanResult, nowWall: Long, fresh: Boolean, ie: IeParse): Observation {
         val ssid = result.ssidClean()
         val hidden = ssid.isBlank()
         val freq = result.frequency
-        val ies = WifiIeParser.parse(result)
+        val ies = ie.parsed
         val channel = ies.channelFromDs ?: channelOf(freq)
         val facts = app.fieldwatch.domain.RadioFacts(
             wifiStandard = WifiIeParser.wifiStandardLabel(result),
@@ -262,7 +262,7 @@ class WifiRadio(
             extras = "",
             at = nowWall,
             fresh = fresh,
-            vendorIeOuis = ies.vendorIes.map { it.oui }.ifEmpty { vendorIeOuisOf(result) }.distinct(),
+            vendorIeOuis = ie.vendorIeOuis,
             facts = facts,
         )
     }
