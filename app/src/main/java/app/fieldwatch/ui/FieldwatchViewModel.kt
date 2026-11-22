@@ -323,9 +323,10 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
     private val _placeStreets = MutableStateFlow<Map<String, String>>(emptyMap())
     val placeStreetNames: StateFlow<Map<String, String>> = _placeStreets
     val export: StateFlow<ExportUi> = _export
-    private val _pendingSettingsImport = MutableStateFlow<PendingSettingsImport?>(null)
-    val pendingSettingsImport: StateFlow<PendingSettingsImport?> = _pendingSettingsImport
-    private val languages = LanguageController(app, { app.language }, viewModelScope, _export, ::readImportBytes)
+    private val imports = ImportNotices(app, _export)
+    private val settingsTransfer = SettingsTransfer(app, viewModelScope, _export, imports)
+    val pendingSettingsImport: StateFlow<PendingSettingsImport?> = settingsTransfer.pendingSettingsImport
+    private val languages = LanguageController(app, { app.language }, viewModelScope, _export, imports::readBytes)
     val language: StateFlow<LanguageUiState> = languages.state
     private val _candidates = MutableStateFlow(CandidatesUi())
     val candidates: StateFlow<CandidatesUi> = _candidates
@@ -625,7 +626,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
     fun importTrustedFromUri(uri: Uri) {
         viewModelScope.launch {
             try {
-                val text = withContext(Dispatchers.IO) { readImportText(uri, ImportFiles.TRUSTED_MAX) }
+                val text = withContext(Dispatchers.IO) { imports.readText(uri, ImportFiles.TRUSTED_MAX) }
                 app.trusted.importText(text)
             } catch (e: CancellationException) {
                 throw e
@@ -2719,15 +2720,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         layerFlow(list).update { it.copy(confirm = false) }
     }
 
-    private fun layerAlertsChanged(prev: AppSettings, next: AppSettings): Boolean {
-        return prev.flockLayer != next.flockLayer ||
-            prev.sensorLayer != next.sensorLayer ||
-            prev.flockAlert != next.flockAlert ||
-            prev.speedAlert != next.speedAlert ||
-            prev.redAlert != next.redAlert ||
-            prev.gunshotAlert != next.gunshotAlert ||
-            prev.cameraAlert != next.cameraAlert
-    }
 
     /** New install tag. A typed callsign stays. Blank keeps meaning Fieldwatch- plus the tag. */
     fun regenerateTakTag() {
@@ -3043,10 +3035,10 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: CatalogNeedsNewerApp) {
-                    showCatalogNeedsApp()
+                    imports.showCatalogNeedsApp()
                     return@launch
                 } catch (_: Exception) {
-                    showImportProblem(
+                    imports.showProblem(
                         "ui.could.not.import.catalog",
                         LanguageText.text("catalog.failed.read"),
                         kept = true,
@@ -3056,7 +3048,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                 val result = app.config.overlayStockCatalog(parsed.pack)
                     .copy(skippedDecode = parsed.skippedDecode)
                 if (result.error != null) {
-                    showImportProblem("ui.could.not.import.catalog", result.error, kept = true)
+                    imports.showProblem("ui.could.not.import.catalog", result.error, kept = true)
                     return@launch
                 }
                 if (!result.alreadyLatest) refreshDevicesAfterImport()
@@ -3094,7 +3086,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                showImportProblem(
+                imports.showProblem(
                     "ui.could.not.import.catalog",
                     LanguageText.text("import.failed.save"),
                     kept = false,
@@ -3130,7 +3122,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             try {
                 val summary = withContext(Dispatchers.IO) {
-                    val text = readImportText(uri, ImportFiles.SIGNATURE_MAX)
+                    val text = imports.readText(uri, ImportFiles.SIGNATURE_MAX)
                     val parsed = SignatureExchange.parsePack(text)
                     val result = app.config.importFleets(parsed.pack.fleets)
                     if (result.error != null) error(result.error)
@@ -3144,23 +3136,23 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
             } catch (e: CancellationException) {
                 throw e
             } catch (_: CatalogNeedsNewerApp) {
-                showCatalogNeedsApp()
+                imports.showCatalogNeedsApp()
             } catch (e: ImportFileException) {
-                showImportProblem("ui.could.not.import.signatures", LanguageText.text(e.key), kept = true)
+                imports.showProblem("ui.could.not.import.signatures", LanguageText.text(e.key), kept = true)
             } catch (e: IllegalArgumentException) {
-                showImportProblem(
+                imports.showProblem(
                     "ui.could.not.import.signatures",
                     e.message ?: LanguageText.text("ui.could.not.import.signatures"),
                     kept = true,
                 )
             } catch (e: IllegalStateException) {
-                showImportProblem(
+                imports.showProblem(
                     "ui.could.not.import.signatures",
                     e.message ?: LanguageText.text("ui.could.not.import.signatures"),
                     kept = true,
                 )
             } catch (_: Exception) {
-                showImportProblem(
+                imports.showProblem(
                     "ui.could.not.import.signatures",
                     LanguageText.text("import.failed.save"),
                     kept = false,
@@ -3169,135 +3161,18 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun suggestedSettingsName(): String {
-        val stamp = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
-            .format(java.util.Date())
-        return "fieldwatch-settings-$stamp.json"
-    }
+    fun suggestedSettingsName(): String = settingsTransfer.suggestedSettingsName()
 
-    private fun settingsPackJson(): String {
-        val cfg = app.config.config.value
-        return SettingsExchange.encode(
-            SettingsExchange.pack(
-                settings = cfg.settings,
-                filter = cfg.filter,
-                presets = cfg.presets,
-                watchlist = cfg.watchlist,
-                hiddenPresetIds = cfg.hiddenPresetIds,
-                appVersion = BuildConfig.VERSION_NAME,
-                exportedAt = java.time.Instant.now().toString(),
-            ),
-        )
-    }
+    fun startSettingsShare() = settingsTransfer.startSettingsShare()
 
-    fun startSettingsShare() {
-        viewModelScope.launch {
-            runCatching {
-                val json = withContext(Dispatchers.Default) { settingsPackJson() }
-                val dir = File(app.cacheDir, "settings").apply { mkdirs() }
-                val file = File(dir, suggestedSettingsName())
-                withContext(Dispatchers.IO) { file.writeText(json) }
-                fileShare(app, file, "application/json", "settings", LanguageText.text("ui.fieldwatch.settings"))
-            }.onSuccess { intent ->
-                _export.value = ExportUi(share = intent, shareTitle = LanguageText.text("ui.fieldwatch.settings"))
-            }.onFailure { err ->
-                _export.value = ExportUi(
-                    error = err.message ?: LanguageText.text("ui.could.not.export.settings"),
-                    errorTitle = LanguageText.text("ui.could.not.export.settings"),
-                )
-            }
-        }
-    }
+    fun saveSettingsToUri(uri: Uri) = settingsTransfer.saveSettingsToUri(uri)
 
-    fun saveSettingsToUri(uri: Uri) {
-        viewModelScope.launch {
-            runCatching {
-                val json = withContext(Dispatchers.Default) { settingsPackJson() }
-                withContext(Dispatchers.IO) {
-                    app.contentResolver.openOutputStream(uri)?.use { out ->
-                        out.write(json.toByteArray(Charsets.UTF_8))
-                    } ?: error(LanguageText.text("ui.could.not.write.location"))
-                }
-            }.onSuccess {
-                _export.value = ExportUi(
-                    noticeTitle = LanguageText.text("ui.settings.saved"),
-                    noticeMessage = LanguageText.text("ui.pack.was.written.folder.2"),
-                )
-            }.onFailure { err ->
-                _export.value = ExportUi(
-                    error = err.message ?: LanguageText.text("ui.could.not.save.settings"),
-                    errorTitle = LanguageText.text("ui.could.not.save.settings"),
-                )
-            }
-        }
-    }
+    fun importSettingsFromUri(uri: Uri) = settingsTransfer.importSettingsFromUri(uri)
 
-    fun importSettingsFromUri(uri: Uri) {
-        viewModelScope.launch {
-            try {
-                val text = withContext(Dispatchers.IO) { readImportText(uri, ImportFiles.SETTINGS_MAX) }
-                val pack = SettingsExchange.parse(text)
-                val warning = SettingsExchange.takImportWarning(app.config.settings, pack.settings)
-                if (warning != null) {
-                    _pendingSettingsImport.value = PendingSettingsImport(pack, warning)
-                } else {
-                    finishSettingsImport(pack)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: CatalogNeedsNewerApp) {
-                showCatalogNeedsApp()
-            } catch (e: ImportFileException) {
-                showImportProblem("ui.could.not.import.settings", LanguageText.text(e.key), kept = true)
-            } catch (e: IllegalArgumentException) {
-                showImportProblem(
-                    "ui.could.not.import.settings",
-                    e.message ?: LanguageText.text("ui.could.not.import.settings"),
-                    kept = true,
-                )
-            } catch (e: IllegalStateException) {
-                showImportProblem(
-                    "ui.could.not.import.settings",
-                    e.message ?: LanguageText.text("ui.could.not.import.settings"),
-                    kept = true,
-                )
-            } catch (_: Exception) {
-                showImportProblem(
-                    "ui.could.not.import.settings",
-                    LanguageText.text("import.failed.save"),
-                    kept = false,
-                )
-            }
-        }
-    }
+    fun confirmPendingSettingsImport() = settingsTransfer.confirmPendingSettingsImport()
 
-    fun confirmPendingSettingsImport() {
-        val pending = _pendingSettingsImport.value ?: return
-        _pendingSettingsImport.value = null
-        viewModelScope.launch {
-            try {
-                finishSettingsImport(pending.pack)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: IllegalStateException) {
-                showImportProblem(
-                    "ui.could.not.import.settings",
-                    e.message ?: LanguageText.text("ui.could.not.import.settings"),
-                    kept = true,
-                )
-            } catch (_: Exception) {
-                showImportProblem(
-                    "ui.could.not.import.settings",
-                    LanguageText.text("import.failed.save"),
-                    kept = false,
-                )
-            }
-        }
-    }
+    fun dismissPendingSettingsImport() = settingsTransfer.dismissPendingSettingsImport()
 
-    fun dismissPendingSettingsImport() {
-        _pendingSettingsImport.value = null
-    }
 
     fun chooseLanguage(choice: String) = languages.chooseLanguage(choice)
 
@@ -3319,32 +3194,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
 
     fun startLanguageTemplateShare() = languages.startLanguageTemplateShare()
 
-    private fun readImportBytes(uri: Uri, maxBytes: Int): ByteArray {
-        try {
-            val stream = app.contentResolver.openInputStream(uri)
-                ?: throw ImportFileException("ui.could.not.read.file")
-            return stream.use { ImportFiles.read(it, maxBytes) }
-        } catch (e: ImportFileException) {
-            throw e
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            throw ImportFileException("ui.could.not.read.file")
-        }
-    }
 
-    private fun readImportText(uri: Uri, maxBytes: Int): String =
-        readImportBytes(uri, maxBytes).toString(Charsets.UTF_8)
-
-    /** The pack named a class, a rule, or a radio this app does not know. Nothing was saved. */
-    private fun showCatalogNeedsApp() {
-        _export.value = ExportUi(
-            errorTitle = LanguageText.text("catalog.needs.app.title"),
-            error = LanguageText.text("catalog.needs.app.body").trim() +
-                " " + LanguageText.text("import.failed.kept"),
-            updateApp = true,
-        )
-    }
 
     /** Closes the catalog notice and opens the app-update check. */
     fun updateAppFromCatalogNotice() {
@@ -3352,14 +3202,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         checkForAppUpdate()
     }
 
-    /** A failed import names the reason. [kept] adds that this phone was not changed. */
-    private fun showImportProblem(titleKey: String, body: String, kept: Boolean) {
-        val text = if (kept) body.trim() + " " + LanguageText.text("import.failed.kept") else body
-        _export.value = ExportUi(
-            errorTitle = LanguageText.text(titleKey),
-            error = text,
-        )
-    }
 
     private fun catalogFetchFailure(failed: CatalogRemote.Fetch.Failed): ExportUi {
         val reason = failed.reason
@@ -3403,43 +3245,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    private suspend fun finishSettingsImport(pack: SettingsPack) {
-        val prev = app.config.settings
-        val result = app.config.importSettings(pack)
-        if (result.error != null) error(result.error)
-        if (app.gnssProfile.profile.value == null && app.config.settings.gnssMonitor) {
-            app.config.update { it.copy(settings = it.settings.copy(gnssMonitor = false)) }
-        }
-        val next = app.config.settings
-        app.logs.configure(next.logFormat, next.logRotateKb, next.loggingEnabled)
-        if (prev.tagLocation != next.tagLocation) app.syncLocationUpdates()
-        if (prev.gnssSettings() != next.gnssSettings() || prev.tagLocation != next.tagLocation) {
-            app.syncGnss()
-        }
-        if (prev.intensity != next.intensity && app.devices.stats.value.scanning) {
-            app.startScanning()
-        }
-        app.devices.refresh(
-            app.config.fleets,
-            next.staleSec,
-            policy = next.detectionPolicy(),
-            decaySec = next.decaySec,
-        )
-        if (next.alertVoice || next.gnssVoice || next.trustedVoice || next.cellVoice || next.swarmVoice || next.trackerVoice || next.anySensorAlert()) {
-            app.alerter.prepareVoice()
-        }
-        if (prev.trackerShade != next.trackerShade) {
-            app.syncTrackerShade(app.tracker.notice.value)
-        }
-        app.announceCell()
-        if (layerAlertsChanged(prev, next)) {
-            app.syncFlock(force = prev.flockLayer != next.flockLayer || prev.sensorLayer != next.sensorLayer)
-        }
-        _export.value = ExportUi(
-            noticeTitle = LanguageText.text("ui.settings.imported"),
-            noticeMessage = result.summary(),
-        )
-    }
 
     fun setLogExportKind(kind: LogExportKind) {
         if (kind.sitOnly) return
