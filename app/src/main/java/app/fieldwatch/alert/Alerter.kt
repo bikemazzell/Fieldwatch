@@ -94,13 +94,11 @@ class Alerter(private val context: Context) {
         holdRemoteId: (Sighting) -> Boolean = { false },
     ) {
         if (!alertsOn || watchlist.isEmpty()) return
-        onMain {
-            fireNewAppearances(
-                devices, fleets, watchlist, beepOn, voiceOn, voiceWhat, shadeOn,
-                visibleOnLive, arrivalsOnly, demoMode, spokenNames, quietDroneFleets,
-                holdRemoteId,
-            )
-        }
+        fireNewAppearances(
+            devices, fleets, watchlist, beepOn, voiceOn, voiceWhat, shadeOn,
+            visibleOnLive, arrivalsOnly, demoMode, spokenNames, quietDroneFleets,
+            holdRemoteId,
+        )
     }
 
     /**
@@ -467,12 +465,8 @@ class Alerter(private val context: Context) {
         val now = System.currentTimeMillis()
         val onAir = devices.filter { !it.gone }
         val liveKeys = onAir.map { it.key }.toSet()
-        announced.removeAll { token -> token.substringAfter('\t') !in liveKeys }
-        val fleetNames = fleets.associateBy { it.id }
         val mineKeys = RadioBookmarks.mineKeys(watchlist)
-        var beepFired = false
-        var voicePhrase: String? = null
-        if (voiceOn) prepareVoice()
+        val candidates = ArrayList<Pair<WatchTarget, Sighting>>()
         for (target in watchlist) {
             for (device in onAir) {
                 if (swarmQuietsFleetWatch(target.deviceKey, target.fleetId, quietDroneFleets)) continue
@@ -484,33 +478,60 @@ class Alerter(private val context: Context) {
                 }
                 if (!shouldRaiseWatch(target, device, mineKeys)) continue
                 if (!visibleOnLive(device)) continue
-                val token = "${target.id}\t${device.key}"
-                if (token in announced) continue
                 if (!arrivalsOnly && !isNewAppearance(device, now)) continue
-                announced.add(token)
-                val label = MacUtil.redactMacIn(
-                    target.label.ifBlank {
-                        fleetNames[target.fleetId]?.name ?: device.displayName
-                    },
-                    device.mac,
-                    demoMode,
-                )
-                if (shadeOn && target.notify) notify(label, device, demoMode)
-                if (target.vibrate) vibrate()
-                if (voiceOn && voicePhrase == null) {
-                    voicePhrase = spokenWatchPhrase(
-                        device, fleets, voiceWhat, target, spokenNames, watchlist,
-                    )
-                }
-                if (beepOn && !beepFired) {
-                    // The scan loop keeps going after this. Queue first so the
-                    // beep timer cannot finish while the phrase is still unset.
-                    if (voicePhrase != null) queueVoice(voicePhrase, afterBeep = true)
-                    beep(holdFocus = voicePhrase == null)
-                    beepFired = true
-                }
-                if (beepOn || voiceOn) _flashes.tryEmit(device.key)
+                candidates.add(target to device)
             }
+        }
+        onMain {
+            announceCandidates(
+                candidates, liveKeys, fleets, watchlist, beepOn, voiceOn, voiceWhat, shadeOn,
+                demoMode, spokenNames,
+            )
+        }
+    }
+
+    private fun announceCandidates(
+        candidates: List<Pair<WatchTarget, Sighting>>,
+        liveKeys: Set<String>,
+        fleets: List<Fleet>,
+        watchlist: List<WatchTarget>,
+        beepOn: Boolean,
+        voiceOn: Boolean,
+        voiceWhat: AlertVoiceWhat,
+        shadeOn: Boolean,
+        demoMode: Boolean,
+        spokenNames: List<SpokenName>,
+    ) {
+        announced.removeAll { token -> token.substringAfter('\t') !in liveKeys }
+        val fleetNames = fleets.associateBy { it.id }
+        var beepFired = false
+        var voicePhrase: String? = null
+        if (voiceOn) prepareVoice()
+        for ((target, device) in candidates) {
+            val token = "${target.id}\t${device.key}"
+            if (!announced.add(token)) continue
+            val label = MacUtil.redactMacIn(
+                target.label.ifBlank {
+                    fleetNames[target.fleetId]?.name ?: device.displayName
+                },
+                device.mac,
+                demoMode,
+            )
+            if (shadeOn && target.notify) notify(label, device, demoMode)
+            if (target.vibrate) vibrate()
+            if (voiceOn && voicePhrase == null) {
+                voicePhrase = spokenWatchPhrase(
+                    device, fleets, voiceWhat, target, spokenNames, watchlist,
+                )
+            }
+            if (beepOn && !beepFired) {
+                // The scan loop keeps going after this. Queue first so the
+                // beep timer cannot finish while the phrase is still unset.
+                if (voicePhrase != null) queueVoice(voicePhrase, afterBeep = true)
+                beep(holdFocus = voicePhrase == null)
+                beepFired = true
+            }
+            if (beepOn || voiceOn) _flashes.tryEmit(device.key)
         }
         if (voicePhrase != null && !beepFired) queueVoice(voicePhrase, afterBeep = false)
     }
