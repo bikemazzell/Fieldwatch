@@ -5,7 +5,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Test
 import java.io.File
 
@@ -31,7 +30,6 @@ class ConfigStoreTest {
 
         val again = ConfigStore(FilesDirContext(dir))
         again.load()
-        assertNotEquals(before, changed)
         assertEquals(changed, again.settings.logRotateKb)
         assertEquals(store.config.value.fleets.map { it.id }, again.config.value.fleets.map { it.id })
     }

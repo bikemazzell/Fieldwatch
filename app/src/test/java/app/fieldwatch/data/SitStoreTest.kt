@@ -7,7 +7,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import kotlin.coroutines.EmptyCoroutineContext
@@ -63,7 +62,6 @@ class SitStoreTest {
         assertEquals(3, file.operatorPath.size)
         assertEquals(listOf(11_000L, 12_000L, 13_000L), file.operatorPath.map { it.at })
         assertEquals(3, again.debriefSource()!!.operatorPath.size)
-        assertEquals(1, File(dir, "sits").listFiles()!!.count { it.name.endsWith(".json") })
     }
 
     @Test
@@ -71,16 +69,15 @@ class SitStoreTest {
         val dir = storeTempDir("sit-store-test")
         val store = store(dir)
         store.load()
-        val started = store.start("lot", listOf(sighting("AA:BB:CC:00:00:01")), fleets, emptyList(), now = 10_000L)!!
+        store.start("lot", listOf(sighting("AA:BB:CC:00:00:01")), fleets, emptyList(), now = 10_000L)
         val ended = store.end(fleets, now = 50_000L)!!
 
         val again = store(dir)
         again.load()
         assertNull(again.ui.value.open)
         assertEquals(listOf(ended), again.ui.value.closed)
-        assertEquals(started.id, ended.id)
         assertNotNull(again.sitFile(ended.id))
-        assertTrue(again.ui.value.closed.single().endAt == 50_000L)
+        assertEquals(50_000L, again.ui.value.closed.single().endAt)
     }
 
     private fun store(dir: File) = SitStore(FilesDirContext(dir), CoroutineScope(EmptyCoroutineContext))

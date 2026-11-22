@@ -10,6 +10,9 @@ class FilesDirContext(private val filesRoot: File) : ContextWrapper(null) {
     override fun getFilesDir(): File = filesRoot
 
     override fun getApplicationContext(): Context = this
+
+    override fun getSystemService(name: String): Any =
+        throw UnsupportedOperationException("FilesDirContext has no system services: $name")
 }
 
 fun storeTempDir(label: String): File =
