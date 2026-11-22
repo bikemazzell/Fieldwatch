@@ -325,8 +325,8 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
     val export: StateFlow<ExportUi> = _export
     private val _pendingSettingsImport = MutableStateFlow<PendingSettingsImport?>(null)
     val pendingSettingsImport: StateFlow<PendingSettingsImport?> = _pendingSettingsImport
-    private val _language = MutableStateFlow(LanguageUiState())
-    val language: StateFlow<LanguageUiState> = _language.asStateFlow()
+    private val languages = LanguageController(app, { app.language }, viewModelScope, _export, ::readImportBytes)
+    val language: StateFlow<LanguageUiState> = languages.state
     private val _candidates = MutableStateFlow(CandidatesUi())
     val candidates: StateFlow<CandidatesUi> = _candidates
     private val _logExportKind = MutableStateFlow(LogExportKind.LOG_CSV)
@@ -966,9 +966,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
         armLivePath()
-        app.loadedLanguage()?.let { store ->
-            _language.value = LanguageUiState(store.current())
-        }
+        app.loadedLanguage()?.let { store -> languages.restore(store.current()) }
         ContextCompat.registerReceiver(
             app,
             locationReceiver,
@@ -3301,137 +3299,25 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         _pendingSettingsImport.value = null
     }
 
-    fun chooseLanguage(choice: String) {
-        viewModelScope.launch {
-            val snap = withContext(Dispatchers.IO) {
-                app.language.choose(choice, java.util.Locale.getDefault())
-            }
-            publishLanguage(snap)
-        }
-    }
+    fun chooseLanguage(choice: String) = languages.chooseLanguage(choice)
 
-    fun importLanguageFromUri(uri: Uri) {
-        viewModelScope.launch {
-            try {
-                val bytes = withContext(Dispatchers.IO) {
-                    readImportBytes(uri, LanguagePack.MAX_BYTES)
-                }
-                when (val parsed = LanguagePack.parse(bytes)) {
-                    is LanguageParse.Reject ->
-                        _language.value = _language.value.copy(pending = null, errorKey = parsed.messageKey)
-                    is LanguageParse.Ok ->
-                        _language.value = _language.value.copy(pending = parsed.preview, errorKey = null)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: ImportFileException) {
-                _language.value = _language.value.copy(pending = null, errorKey = e.key)
-            } catch (_: Exception) {
-                _language.value = _language.value.copy(pending = null, errorKey = "ui.could.not.read.file")
-            }
-        }
-    }
+    fun importLanguageFromUri(uri: Uri) = languages.importLanguageFromUri(uri)
 
-    fun confirmLanguageImport() {
-        val pending = _language.value.pending ?: return
-        viewModelScope.launch {
-            try {
-                val snap = withContext(Dispatchers.IO) {
-                    app.language.confirm(pending, java.util.Locale.getDefault())
-                }
-                publishLanguage(snap)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                _language.value = _language.value.copy(pending = null, errorKey = "import.failed.save")
-            }
-        }
-    }
+    fun confirmLanguageImport() = languages.confirmLanguageImport()
 
-    fun cancelLanguageImport() {
-        _language.value = _language.value.copy(pending = null)
-    }
+    fun cancelLanguageImport() = languages.cancelLanguageImport()
 
-    fun startLanguageReportShare() {
-        val pending = _language.value.pending ?: return
-        viewModelScope.launch {
-            runCatching {
-                val text = withContext(Dispatchers.Default) {
-                    LanguagePack.report(pending, BuildConfig.VERSION_NAME)
-                }
-                val dir = java.io.File(app.cacheDir, "language").apply { mkdirs() }
-                val file = java.io.File(dir, LanguageReportCopy.FILE)
-                withContext(Dispatchers.IO) { file.writeText(text) }
-                fileShare(app, file, "text/plain", "language-report", LanguageReportCopy.SHARE)
-            }.onSuccess { intent ->
-                _export.value = ExportUi(share = intent, shareTitle = LanguageReportCopy.SHARE)
-            }.onFailure {
-                _language.value = _language.value.copy(errorKey = "language.report.failed")
-            }
-        }
-    }
+    fun startLanguageReportShare() = languages.startLanguageReportShare()
 
-    fun dismissLanguageError() {
-        _language.value = _language.value.copy(errorKey = null)
-    }
+    fun dismissLanguageError() = languages.dismissLanguageError()
 
-    fun removeLanguagePack() {
-        viewModelScope.launch {
-            val snap = withContext(Dispatchers.IO) {
-                app.language.remove(java.util.Locale.getDefault())
-            }
-            publishLanguage(snap)
-        }
-    }
+    fun removeLanguagePack() = languages.removeLanguagePack()
 
-    fun dismissLanguageDoor() {
-        viewModelScope.launch {
-            val snap = withContext(Dispatchers.IO) {
-                app.language.dismissDoor(java.util.Locale.getDefault())
-            }
-            publishLanguage(snap, _language.value.pending, _language.value.errorKey)
-        }
-    }
+    fun dismissLanguageDoor() = languages.dismissLanguageDoor()
 
-    fun dismissLanguageAi() {
-        val tag = _language.value.snap.activeTag ?: return
-        viewModelScope.launch {
-            val snap = withContext(Dispatchers.IO) {
-                app.language.markAiSeen(tag, java.util.Locale.getDefault())
-            }
-            publishLanguage(snap, _language.value.pending, _language.value.errorKey)
-        }
-    }
+    fun dismissLanguageAi() = languages.dismissLanguageAi()
 
-    fun startLanguageTemplateShare() {
-        viewModelScope.launch {
-            runCatching {
-                val json = withContext(Dispatchers.Default) {
-                    LanguagePack.template(BuildConfig.VERSION_NAME)
-                }
-                val dir = java.io.File(app.cacheDir, "language").apply { mkdirs() }
-                val file = java.io.File(dir, "fieldwatch-language-en.json")
-                withContext(Dispatchers.IO) { file.writeText(json) }
-                fileShare(app, file, "application/json", "language", LanguageExportCopy.SHARE)
-            }.onSuccess { intent ->
-                _export.value = ExportUi(share = intent, shareTitle = LanguageExportCopy.SHARE)
-            }.onFailure { err ->
-                _export.value = ExportUi(
-                    error = err.message ?: LanguageExportCopy.FAILED,
-                    errorTitle = LanguageExportCopy.FAILED,
-                )
-            }
-        }
-    }
-
-    private fun publishLanguage(
-        snap: app.fieldwatch.data.LanguageSnapshot,
-        pending: app.fieldwatch.domain.LanguagePreview? = null,
-        errorKey: String? = null,
-    ) {
-        LanguageText.apply(snap.overlay, snap.activeTag)
-        _language.value = LanguageUiState(snap, pending, errorKey)
-    }
+    fun startLanguageTemplateShare() = languages.startLanguageTemplateShare()
 
     private fun readImportBytes(uri: Uri, maxBytes: Int): ByteArray {
         try {
