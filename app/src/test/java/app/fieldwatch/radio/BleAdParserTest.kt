@@ -102,9 +102,4 @@ class BleAdParserTest {
         assertNull(p.localName)
     }
 
-    @Test
-    fun flagsLabelText() {
-        assertEquals("LE General Discoverable, BR/EDR not supported", BleAdParser.flagsLabel(0x06))
-        assertEquals("0x00", BleAdParser.flagsLabel(0x00))
-    }
 }

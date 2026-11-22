@@ -847,113 +847,6 @@ object DebriefReport {
         }
     }
 
-    /**
-     * GPS / places / co-travel block for the AI Export prompt. Same heuristics
-     * as the field debrief; markdown so a chat model can cite it.
-     */
-    fun gpsAnalystMarkdown(
-        devices: List<Sighting>,
-        fleets: List<Fleet>,
-        settings: AppSettings,
-        operatorPath: List<GpsSample>,
-        now: Long = System.currentTimeMillis(),
-        places: DebriefPlaces = DebriefPlaces.Off,
-        window: DebriefWindow? = null,
-        customNames: Map<String, String> = emptyMap(),
-        bookmarkedKeys: Set<String> = emptySet(),
-        mineKeys: Set<String> = emptySet(),
-    ): String = buildString {
-        val names = fleets.associate { it.id to it.name }
-        val win = window ?: DebriefWindow(now - WINDOW_MS, now)
-        val windowStart = win.startAt
-        val windowEnd = win.endAt
-        val path = operatorPath.filter { it.at in windowStart..windowEnd }
-        val pathSpan = Geo.spanM(path)
-        val pathLen = Geo.pathLengthM(path)
-        val inWin = devices.filter { it.lastSeen >= windowStart || it.firstSeen >= windowStart }
-        val trackers = inWin.filter { TrackerMatch.kind(it, names) == TrackerMatch.Kind.FINDER }
-        val follow = followAssessments(trackers, names, path, windowStart, windowEnd, TrackerMatch.Kind.FINDER)
-        val beaconsMd = stayedWithYou(
-            followAssessments(
-                inWin.filter { TrackerMatch.kind(it, names) == TrackerMatch.Kind.BEACON },
-                names, path, windowStart, windowEnd, TrackerMatch.Kind.BEACON,
-            ),
-        )
-        val wearablesMd = stayedWithYou(
-            followAssessments(
-                inWin.filter { TrackerMatch.kind(it, names) == TrackerMatch.Kind.WEARABLE },
-                names, path, windowStart, windowEnd, TrackerMatch.Kind.WEARABLE,
-            ),
-        )
-
-        appendLine(LanguageText.text("ui.where.were.operator.gps"))
-        appendLine("- Tag detections with GPS: ${if (settings.tagLocation) "on" else "off"}.")
-        appendLine(
-            (LanguageText.text("ui.online.place.names") + " ") +
-                if (places.attempted) places.note
-                else LanguageText.text("ui.off.settings.online.place"),
-        )
-        append(whereYouWere(settings, path, pathLen, pathSpan, inWin, names, places, windowEnd, customNames, bookmarkedKeys).trimEnd())
-        appendLine()
-        appendLine()
-        if (path.size < 2 || pathSpan < MOVE_M) {
-            appendLine(LanguageText.text("ui.following.test.insufficient.movement"))
-            appendLine()
-        }
-        appendLine(LanguageText.text("ui.gps.co.travel"))
-        appendLine(
-            (LanguageText.text("ui.only.radios.stayed.operator") + " ") +
-                (LanguageText.text("ui.house.tags.other.radios") + " ") +
-                (LanguageText.text("ui.not.identity.find.my") + " ") +
-                (LanguageText.text("ui.possible.tail.extra.gates") + " ") +
-                (LanguageText.text("ui.2.3.gps.stamps") + " ") +
-                (LanguageText.text("ui.fail.any.one.omit") + " ") +
-                (LanguageText.text("ui.finder.tags.airtag.smarttag") + " ") +
-                (LanguageText.text("ui.tracking.test.retail.beacons") + " ") +
-                LanguageText.text("ui.they.do.not.typically"),
-        )
-        fun List<FollowHit>.open(): List<FollowHit> = filter { it.device.key !in mineKeys }
-        val followingMd = follow.filter { it.verdict == Verdict.FOLLOWING }.open()
-        val wholeSitMd = follow.filter {
-            it.verdict == Verdict.OWN_LIKELY || it.verdict == Verdict.MOVED_WITH_YOU
-        }.open()
-        val beaconsOpen = beaconsMd.open()
-        val wearablesOpen = wearablesMd.open()
-        if (followingMd.isEmpty() && wholeSitMd.isEmpty() && beaconsOpen.isEmpty() && wearablesOpen.isEmpty()) {
-            appendLine(LanguageText.text("ui.none.stayed.path"))
-        } else {
-            fun dump(title: String, rows: List<FollowHit>) {
-                if (rows.isEmpty()) return
-                appendLine()
-                appendLine("### $title")
-                rows.forEach { h ->
-                    val d = h.device
-                    appendLine(
-                        "- ${h.label}  ${d.reportName(customNames)}  ${d.mac}  RSSI ${d.rssi} dBm " +
-                            "(min ${d.rssiMin} / max ${d.rssiMax})  trail ${h.samples} fixes, span ${h.spanM.toInt()} m",
-                    )
-                    appendLine("  ${h.detail}")
-                }
-            }
-            dump(
-                LanguageText.text("ui.possible.trackers.finder.tags"),
-                wholeSitMd,
-            )
-            dump(
-                LanguageText.text("ui.possible.tail.finder.tags"),
-                followingMd,
-            )
-            dump(
-                LanguageText.text("ui.retail.beacons.ibeacon.minew"),
-                beaconsOpen,
-            )
-            dump(
-                LanguageText.text("ui.wearables.garmin.fitbit.oura"),
-                wearablesOpen,
-            )
-        }
-    }
-
     private enum class Verdict { FOLLOWING, MOVED_WITH_YOU, OWN_LIKELY, STATIONARY, INSUFFICIENT }
 
     private data class FollowHit(
@@ -1833,8 +1726,6 @@ object DebriefReport {
         }
         return sum
     }
-
-    private fun absDelta(a: Long, b: Long) = kotlin.math.abs(a - b)
 
     /** Name, reason, time, and address. No coordinates. */
     private fun trustedReport(lines: List<TrustedSitLine>, demo: Boolean): String =

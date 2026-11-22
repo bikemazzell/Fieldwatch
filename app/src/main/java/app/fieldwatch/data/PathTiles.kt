@@ -23,9 +23,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.PI
 import kotlin.math.abs
@@ -604,15 +602,16 @@ object PathTiles {
         file: File,
         hopsLeft: Int,
     ): Fetch {
-        val conn = (URL(address).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 4000
-            readTimeout = 4000
-            instanceFollowRedirects = token.isEmpty()
-            setRequestProperty(
-                "User-Agent",
-                "Fieldwatch/${app.fieldwatch.BuildConfig.VERSION_NAME} (https://github.com/OffGridPete/Fieldwatch)",
-            )
-        }
+        val conn = Http.open(
+            address,
+            4000,
+            4000,
+            mapOf(
+                "User-Agent" to
+                    "Fieldwatch/${app.fieldwatch.BuildConfig.VERSION_NAME} (https://github.com/OffGridPete/Fieldwatch)",
+            ),
+            followRedirects = token.isEmpty(),
+        )
         return try {
             val code = conn.responseCode
             if (token.isNotEmpty() && code in 300..399) {
@@ -628,17 +627,7 @@ object PathTiles {
             }
             if (code != 200) return Fetch.Failed
             if (conn.contentLengthLong > MAX_TILE_BYTES) return Fetch.Failed
-            val bytes = conn.inputStream.use { stream ->
-                val buf = ByteArrayOutputStream()
-                val tmp = ByteArray(8192)
-                while (true) {
-                    val n = stream.read(tmp)
-                    if (n < 0) break
-                    if (buf.size() + n > MAX_TILE_BYTES) return Fetch.Failed
-                    buf.write(tmp, 0, n)
-                }
-                buf.toByteArray()
-            }
+            val bytes = conn.inputStream.use { Http.readCapped(it, MAX_TILE_BYTES) } ?: return Fetch.Failed
             if (bytes.size < 64) return Fetch.Failed
             val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return Fetch.Failed
             runCatching { file.writeBytes(bytes) }

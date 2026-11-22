@@ -52,6 +52,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,6 +81,7 @@ import app.fieldwatch.domain.LogExportRadios
 import app.fieldwatch.domain.Sit
 import app.fieldwatch.domain.SitDiff
 import app.fieldwatch.domain.SitPathPlot
+import app.fieldwatch.domain.SitUi
 import app.fieldwatch.ui.component.AircraftAmber
 import app.fieldwatch.ui.component.FieldwatchDropdownField
 import app.fieldwatch.ui.component.SitPathCanvas
@@ -87,7 +89,7 @@ import app.fieldwatch.ui.component.rememberMapFooter
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.fieldwatch.ui.NestedTabInsets
 import app.fieldwatch.ui.NestedTopBar
-import app.fieldwatch.ui.FieldwatchUi
+import app.fieldwatch.ui.ConfigUi
 import app.fieldwatch.ui.FieldwatchViewModel
 import app.fieldwatch.ui.component.FieldwatchSwitch
 import app.fieldwatch.ui.component.SectionCard
@@ -99,7 +101,7 @@ import app.fieldwatch.ui.theme.nightIf
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReportsScreen(
-    state: FieldwatchUi,
+    state: ConfigUi,
     vm: FieldwatchViewModel,
     exporting: Boolean,
     onSaveToStorage: () -> Unit,
@@ -109,6 +111,11 @@ fun ReportsScreen(
     onOpenPlaceRadio: (String) -> Unit = {},
 ) {
     val settings = state.settings
+    val liveUi = vm.ui.collectAsStateWithLifecycle()
+    val sit by remember { derivedStateOf { liveUi.value.sit } }
+    val logLines by remember { derivedStateOf { liveUi.value.logLines } }
+    val phoneLat by remember { derivedStateOf { liveUi.value.phoneLat } }
+    val phoneLon by remember { derivedStateOf { liveUi.value.phoneLon } }
     var confirmClear by remember { mutableStateOf(false) }
     var startSit by remember { mutableStateOf(false) }
     var sitNameDraft by remember { mutableStateOf("") }
@@ -124,13 +131,13 @@ fun ReportsScreen(
     val scroll = rememberScrollState()
     LaunchedEffect(topicName) { scroll.scrollTo(0) }
     val pathModel by vm.sitPath.collectAsStateWithLifecycle()
-    val sitKey = "${state.sit.selectedId}:${state.sit.open?.id}"
+    val sitKey = "${sit.selectedId}:${sit.open?.id}"
     var pathViewport by remember(sitKey) { mutableStateOf<SitPathPlot.Viewport?>(null) }
     var pathTileWindow by remember(sitKey) { mutableStateOf<DoubleArray?>(null) }
     val pathTileWindowKey = pathTileWindow?.let { SitPathPlot.tileWindowKey(it) }.orEmpty()
     val pathHeld = pathViewport != null
     val mapKeyRev by vm.mapKeyRevision.collectAsStateWithLifecycle()
-    LaunchedEffect(state.sit.selectedId, state.sit.open?.id) {
+    LaunchedEffect(sit.selectedId, sit.open?.id) {
         while (true) {
             vm.refreshSitPath()
             kotlinx.coroutines.delay(3_000L)
@@ -192,7 +199,7 @@ fun ReportsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                val open = state.sit.open
+                val open = sit.open
                 if (open != null) {
                     val dur = Sit.fmtDuration(open.durationMs())
                     Text(
@@ -201,7 +208,7 @@ fun ReportsScreen(
                             mapOf(
                                 "name" to open.name,
                                 "duration" to dur,
-                                "n" to state.sit.radioCount.toString(),
+                                "n" to sit.radioCount.toString(),
                             ),
                         ),
                         style = MaterialTheme.typography.bodyMedium,
@@ -226,24 +233,24 @@ fun ReportsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (state.sit.closed.isEmpty() && open == null) {
+                if (sit.closed.isEmpty() && open == null) {
                     Text(
                         LanguageText.text("ui.no.saved.sits"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (state.sit.closed.isNotEmpty()) {
+                if (sit.closed.isNotEmpty()) {
                     val pickEnabled = open == null && !exporting
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         SitChoiceRow(
-                            selected = state.sit.selectedId == null,
+                            selected = sit.selectedId == null,
                             enabled = pickEnabled,
                             title = LanguageText.text("ui.last.15.minutes"),
                             subtitle = LanguageText.text("ui.uses.what.still.memory"),
                             onSelect = { vm.selectSit(null) },
                         )
-                        state.sit.closed.forEach { row ->
+                        sit.closed.forEach { row ->
                             val dur = Sit.fmtDuration(row.durationMs())
                             val extra = if (row.extraAttentionCount > 0) {
                                 " · " + LanguageText.text(
@@ -257,7 +264,7 @@ fun ReportsScreen(
                                 ""
                             }
                             SitChoiceRow(
-                                selected = state.sit.selectedId == row.id,
+                                selected = sit.selectedId == row.id,
                                 enabled = pickEnabled,
                                 title = row.name,
                                 subtitle = LanguageText.text(
@@ -279,7 +286,7 @@ fun ReportsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    val picked = state.sit.closed.firstOrNull { it.id == state.sit.selectedId }
+                    val picked = sit.closed.firstOrNull { it.id == sit.selectedId }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -308,7 +315,7 @@ fun ReportsScreen(
                 }
             }
             ReportTopicList(
-                using = usingSitLabel(state),
+                using = usingSitLabel(sit),
                 onOpen = { topicName = it.name },
             )
             ReportTopicRow(
@@ -357,8 +364,8 @@ fun ReportsScreen(
                     val aircraftTiles by vm.pathAircraftTiles.collectAsStateWithLifecycle()
                     val mapPosition = rememberMapFooter(
                         settings.mapFooter,
-                        state.phoneLat,
-                        state.phoneLon,
+                        phoneLat,
+                        phoneLon,
                         settings.demoMode,
                     )
                     val pathMapHeight = (LocalConfiguration.current.screenHeightDp * 0.46f).dp
@@ -602,7 +609,7 @@ fun ReportsScreen(
                 ) { Text(LanguageText.text("reports.debrief.pdf")) }
             }
             Text(
-                sitReportCaption(state),
+                sitReportCaption(sit),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -677,12 +684,12 @@ fun ReportsScreen(
             if (topic == ReportTopic.COMPARE) {
             SectionCard(LanguageText.text("reports.compare"), showTitle = false) {
                 Text(
-                    compareThisCaption(state),
+                    compareThisCaption(sit),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                val thisSaved = SitDiff.thisSavedId(state.sit.open, state.sit.selectedId)
-                val choices = SitDiff.secondSitChoices(state.sit.closed, thisSaved)
+                val thisSaved = SitDiff.thisSavedId(sit.open, sit.selectedId)
+                val choices = SitDiff.secondSitChoices(sit.closed, thisSaved)
                 if (choices.isEmpty()) {
                     Text(
                         LanguageText.text("ui.save.second.sit.compare"),
@@ -698,7 +705,7 @@ fun ReportsScreen(
                         choices.forEach { row ->
                             val dur = Sit.fmtDuration(row.durationMs())
                             SitChoiceRow(
-                                selected = state.sit.compareId == row.id,
+                                selected = sit.compareId == row.id,
                                 enabled = !exporting,
                                 title = row.name,
                                 subtitle = "${Sit.defaultName(row.startAt)} · $dur · ${row.radioCount} radios",
@@ -713,12 +720,12 @@ fun ReportsScreen(
                 ) {
                     FieldwatchActionButton(
                         onClick = vm::startSitCompare,
-                        enabled = !exporting && state.sit.compareId != null,
+                        enabled = !exporting && sit.compareId != null,
                         modifier = Modifier.weight(1f),
                     ) { Text(LanguageText.text("ui.compare.text")) }
                     FieldwatchActionButton(
                         onClick = vm::startSitComparePdf,
-                        enabled = !exporting && state.sit.compareId != null,
+                        enabled = !exporting && sit.compareId != null,
                         modifier = Modifier.weight(1f),
                     ) { Text(LanguageText.text("reports.compare.pdf")) }
                 }
@@ -729,7 +736,7 @@ fun ReportsScreen(
                 )
                 FieldwatchActionButton(
                     onClick = vm::startSitCompareAiExport,
-                    enabled = !exporting && state.sit.compareId != null,
+                    enabled = !exporting && sit.compareId != null,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(LanguageText.text("ui.ai.export")) }
                 Text(
@@ -746,7 +753,7 @@ fun ReportsScreen(
                 LanguageText.text(
                     "reports.log",
                     mapOf(
-                        "n" to state.logLines.toString(),
+                        "n" to logLines.toString(),
                         "kb" to (vm.logBytes() / 1024).toString(),
                     ),
                 ) + if (settings.loggingEnabled) "" else ("  " + LanguageText.text("ui.logging.off")),
@@ -831,7 +838,7 @@ fun ReportsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Sit.dropWarning(state.sit.closed)?.let { warn ->
+                    Sit.dropWarning(sit.closed)?.let { warn ->
                         Text(
                             warn,
                             style = MaterialTheme.typography.bodySmall,
@@ -1206,10 +1213,10 @@ private fun PathRadioRow(
     }
 }
 
-private fun compareThisCaption(state: FieldwatchUi): String {
-    val open = state.sit.open
+private fun compareThisCaption(sit: SitUi): String {
+    val open = sit.open
     if (open != null) return LanguageText.text("reports.this.name", mapOf("name" to open.name))
-    val selected = state.sit.closed.firstOrNull { it.id == state.sit.selectedId }
+    val selected = sit.closed.firstOrNull { it.id == sit.selectedId }
     if (selected != null) return LanguageText.text("reports.this.name", mapOf("name" to selected.name))
     return LanguageText.text("ui.sit.last.15.minutes")
 }
@@ -1227,9 +1234,9 @@ private enum class ReportTopic(val titleKey: String) {
     fun title(): String = LanguageText.text(titleKey)
 }
 
-private fun usingSitLabel(state: FieldwatchUi): String {
-    state.sit.open?.let { return it.name }
-    val selected = state.sit.closed.firstOrNull { it.id == state.sit.selectedId }
+private fun usingSitLabel(sit: SitUi): String {
+    sit.open?.let { return it.name }
+    val selected = sit.closed.firstOrNull { it.id == sit.selectedId }
     return selected?.name ?: LanguageText.text("ui.last.15.minutes.2")
 }
 
@@ -1382,9 +1389,9 @@ private fun ExportFormatBlock(
     )
 }
 
-private fun sitReportCaption(state: FieldwatchUi): String {
-    val open = state.sit.open
-    val selected = state.sit.closed.firstOrNull { it.id == state.sit.selectedId }
+private fun sitReportCaption(sit: SitUi): String {
+    val open = sit.open
+    val selected = sit.closed.firstOrNull { it.id == sit.selectedId }
     val window = when {
         open != null -> LanguageText.text("reports.this.window", mapOf("name" to open.name))
         selected != null -> LanguageText.text("reports.sit.name", mapOf("name" to selected.name))

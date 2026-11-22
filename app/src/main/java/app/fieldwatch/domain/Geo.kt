@@ -3,10 +3,8 @@ package app.fieldwatch.domain
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -708,25 +706,6 @@ object Geo {
         return true
     }
 
-    /** Signed meters of [p] off the line from [a] to [b]. Zero when the line is too short to trust. */
-    fun crossTrackMeters(
-        aLat: Double,
-        aLon: Double,
-        bLat: Double,
-        bLon: Double,
-        pLat: Double,
-        pLon: Double,
-    ): Double {
-        val cosLat = cos(Math.toRadians(aLat)).coerceAtLeast(0.2)
-        val eastB = (bLon - aLon) * 111_320.0 * cosLat
-        val northB = (bLat - aLat) * 111_320.0
-        val eastP = (pLon - aLon) * 111_320.0 * cosLat
-        val northP = (pLat - aLat) * 111_320.0
-        val len = hypot(eastB, northB)
-        if (len < 1.0) return 0.0
-        return (eastB * northP - northB * eastP) / len
-    }
-
     /**
      * Frozen points plus a short moving tip. The tip is where the phone is now.
      * Once the phone is [DRIVE_STEP_M] past the last frozen point, that tip stays
@@ -941,11 +920,6 @@ object TrackerMatch {
         "05", "07", "08", "09", "0A", "0B", "0C", "0D", "0E", "0F", "10",
     )
 
-    fun isTrackerFleet(name: String): Boolean {
-        val n = name.lowercase()
-        return finderTokens.any { it in n }
-    }
-
     private fun nameHits(device: Sighting, names: Map<String, String>, tokens: List<String>): List<String> =
         device.fleetIds.mapNotNull { id ->
             val n = names[id] ?: return@mapNotNull null
@@ -981,9 +955,6 @@ object TrackerMatch {
         if (device.manufacturerId == 0x004C) return true
         return device.facts.mfgRecords.any { it.companyId == 0x004C }
     }
-
-    fun isTracker(device: Sighting, names: Map<String, String>): Boolean =
-        kind(device, names) == Kind.FINDER
 
     /**
      * Pocket iPhone / Continuity: loud Apple BLE that stayed loud.

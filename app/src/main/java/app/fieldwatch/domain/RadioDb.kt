@@ -44,8 +44,6 @@ object RadioDb {
         }
     }
 
-    fun isReady(): Boolean = ready
-
     fun vendorForMac(mac: String): String? {
         if (!ready) return null
         if (MacUtil.isRandomized(mac)) {

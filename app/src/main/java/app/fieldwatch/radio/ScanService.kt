@@ -520,6 +520,7 @@ class ScanService : LifecycleService() {
             val near = app.passDroneNear(nowMs)
             val quietFleets = if (swarm.quiet) app.droneFleetIds() else emptySet()
             if (settings.alertsEnabled && app.config.watchlist.isNotEmpty()) {
+                val mineKeys = RadioBookmarks.mineKeys(app.config.watchlist)
                 app.alerter.checkLive(
                     live,
                     fleets,
@@ -537,7 +538,7 @@ class ScanService : LifecycleService() {
                     holdRemoteId = { device ->
                         app.droneNear.holdsBookmark(
                             device,
-                            RadioBookmarks.mineKeys(app.config.watchlist),
+                            mineKeys,
                             nowMs,
                             settings.droneNearM,
                         )

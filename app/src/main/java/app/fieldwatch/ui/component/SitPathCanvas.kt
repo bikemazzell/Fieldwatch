@@ -278,13 +278,12 @@ fun SitPathCanvas(
             if (!sameView(working, base)) syncPictureShift(layout, base, working, gesture.shift)
         }
     }
-    val routeBlue = remember { Path() }
-    val routeGreen = remember { Path() }
     val strokePad = max(motion.padPx.floatValue, gesture.padPx.floatValue)
-    remember(drawn, strokePad) {
-        routeBlue.reset()
-        routeGreen.reset()
-        drawn?.stroke(PathDrive(routeBlue), PathDrive(routeGreen), strokePad)
+    val (routeBlue, routeGreen) = remember(drawn, strokePad) {
+        val blue = Path()
+        val green = Path()
+        drawn?.stroke(PathDrive(blue), PathDrive(green), strokePad)
+        blue to green
     }
     val onTileWindowRef = remember { mutableStateOf(onTileWindow) }
     onTileWindowRef.value = onTileWindow

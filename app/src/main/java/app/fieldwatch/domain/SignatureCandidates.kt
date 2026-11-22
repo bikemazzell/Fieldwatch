@@ -265,8 +265,6 @@ object SignatureCandidates {
         return key
     }
 
-    internal fun broadCompany(id: Int): Boolean = id in BROAD_COMPANY
-
     /** Create-from-device used to emit DIRECT* / ANDROID* globs. Those are every Direct AP. */
     internal fun isOverbroadCreateName(text: String): Boolean {
         val t = text.trim().uppercase().trimEnd('*').trimEnd('-').trimEnd('_')

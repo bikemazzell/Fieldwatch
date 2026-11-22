@@ -1,6 +1,7 @@
 package app.fieldwatch
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -56,7 +57,6 @@ import app.fieldwatch.domain.Geo
 import app.fieldwatch.domain.GpsSample
 import app.fieldwatch.domain.Hunt
 import app.fieldwatch.domain.HuntHeat
-import app.fieldwatch.domain.HuntPlain
 import app.fieldwatch.domain.HuntPose
 import app.fieldwatch.domain.HuntStepDetector
 import app.fieldwatch.domain.HuntTrack
@@ -328,8 +328,6 @@ class FieldwatchApp : Application() {
         uiDepth.updateAndGet { (it - 1).coerceAtLeast(0) }
     }
 
-    fun inFront(): Boolean = uiDepth.get() > 0
-
     /**
      * Silent notification for the tracker warning on screen.
      * Posted only when System notification is on. The popup is separate.
@@ -550,27 +548,11 @@ class FieldwatchApp : Application() {
     }
 
     /**
-     * The plain walk still on screen, when this hunt is not on a fix.
-     * Null once that walk has been placed, or when Hunt is closed.
-     */
-    fun plainSnapshot(): HuntPlain? {
-        synchronized(motionLock) {
-            if (!huntMotion) return null
-            return huntTrack.plainPicture()
-        }
-    }
-
-    /**
      * Steps and phone heading, only while Hunt is open.
      * [seed] places a resumed walk that was already on a fix.
-     * [plain] continues a walk that was not on a map. [plainSamples] are its hears.
      * A fresh hunt stays a local picture until two fresh fixes agree and the walk is still short.
      */
-    fun beginHuntMotion(
-        seed: Pair<Double, Double>? = null,
-        plain: HuntPlain? = null,
-        plainSamples: List<GpsSample> = emptyList(),
-    ) {
+    fun beginHuntMotion(seed: Pair<Double, Double>? = null) {
         synchronized(motionLock) {
             huntTrack.clear()
             val saved = readHuntStride()
@@ -589,10 +571,9 @@ class FieldwatchApp : Application() {
             huntMotion = true
             val now = System.currentTimeMillis()
             stepWatchAt = now
-            if (plain != null) huntTrack.resumePlain(plain, plainSamples)
-            val start = huntStartFix(if (plain != null) null else seed, lastGpsFix, lastGpsFixAt, lastGpsAcc, now)
+            val start = huntStartFix(seed, lastGpsFix, lastGpsFixAt, lastGpsAcc, now)
             if (start != null) {
-                if (seed != null && plain == null) {
+                if (seed != null) {
                     huntTrack.gps(start.first, start.second, start.third, now, fresh = true, commit = true)
                 } else {
                     val age = now - lastGpsFixAt
@@ -1020,6 +1001,7 @@ class FieldwatchApp : Application() {
         syncLocationUpdates()
     }
 
+    @SuppressLint("MissingPermission")
     fun startLocationUpdates() {
         if (locating || !hasFineLocation()) return
         val lm = getSystemService(LOCATION_SERVICE) as LocationManager
@@ -1142,6 +1124,7 @@ class FieldwatchApp : Application() {
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun seedLastKnown(lm: LocationManager) {
         val now = System.currentTimeMillis()
         val cands = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)

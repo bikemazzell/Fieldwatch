@@ -9,14 +9,14 @@ import android.net.wifi.ScanResult
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
-import android.os.Looper
+import android.os.HandlerThread
 import android.util.Log
 import androidx.core.content.ContextCompat
 import app.fieldwatch.domain.Observation
 import app.fieldwatch.domain.RadioKind
 import app.fieldwatch.domain.Rssi
 import java.util.ArrayDeque
-import java.util.concurrent.Executors
+import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -28,14 +28,16 @@ class WifiRadio(
     private val onFreshScan: (List<Observation>) -> Unit = {},
 ) {
     private val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-    private val main = Handler(Looper.getMainLooper())
+    @Volatile private var worker: Handler? = null
+    private var workerThread: HandlerThread? = null
     private var registered = false
+    private val ieParses = ParseCache<IeParse>()
     private val lastEmitAt = AtomicLong(0L)
     private val awaitingScan = AtomicBoolean(false)
     private val nextAllowedAt = AtomicLong(0L)
     private val failStreak = AtomicInteger(0)
     private val scanStarts = ArrayDeque<Long>()
-    private val callbackExecutor = Executors.newSingleThreadExecutor()
+    private val callbackExecutor = Executor { task -> worker?.post(task) }
     private val quotaLock = Any()
 
     private val receiver = object : BroadcastReceiver() {
@@ -63,10 +65,16 @@ class WifiRadio(
     @SuppressLint("MissingPermission")
     fun start() {
         if (registered) return
+        val thread = HandlerThread("FieldwatchWifi").also { it.start() }
+        val handler = Handler(thread.looper)
+        workerThread = thread
+        worker = handler
         ContextCompat.registerReceiver(
             context,
             receiver,
             IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION),
+            null,
+            handler,
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         if (Build.VERSION.SDK_INT >= 30) {
@@ -75,17 +83,21 @@ class WifiRadio(
             }
         }
         registered = true
-        emitResults(fresh = false)
-        requestScan(minIntervalMs = 0L)
+        handler.post {
+            guardResults { emitResults(fresh = false) }
+            requestScan(minIntervalMs = 0L)
+        }
     }
 
     fun stop() {
         if (!registered) return
-        main.removeCallbacks(poll)
         runCatching { context.unregisterReceiver(receiver) }
         if (Build.VERSION.SDK_INT >= 30) {
             runCatching { wifi.unregisterScanResultsCallback(resultsCallback!!) }
         }
+        worker = null
+        workerThread?.quit()
+        workerThread = null
         registered = false
         awaitingScan.set(false)
     }
@@ -106,15 +118,19 @@ class WifiRadio(
             synchronized(quotaLock) { scanStarts.addLast(now) }
             val floor = if (unthrottled) FAST_INTERVAL_MS else 28_000L
             nextAllowedAt.set(now + minIntervalMs.coerceAtLeast(floor))
-            main.removeCallbacks(poll)
-            main.postDelayed(poll, 2_400L)
+            worker?.let {
+                it.removeCallbacks(poll)
+                it.postDelayed(poll, 2_400L)
+            }
         } else {
             val streak = failStreak.incrementAndGet().coerceAtMost(4)
             val backoff = (8_000L * (1L shl (streak - 1))).coerceAtMost(45_000L)
             nextAllowedAt.set(now + backoff)
             awaitingScan.set(false)
-            main.removeCallbacks(poll)
-            main.postDelayed({ emitResults(fresh = false) }, 250L)
+            worker?.let {
+                it.removeCallbacks(poll)
+                it.postDelayed({ guardResults { emitResults(fresh = false) } }, 250L)
+            }
         }
         return ok
     }
@@ -151,8 +167,10 @@ class WifiRadio(
             val results = runCatching { wifi.scanResults }.getOrDefault(emptyList())
             if (results.isEmpty()) {
                 if (awaitingScan.get()) {
-                    main.removeCallbacks(poll)
-                    main.postDelayed(poll, 1_200L)
+                    worker?.let {
+                        it.removeCallbacks(poll)
+                        it.postDelayed(poll, 1_200L)
+                    }
                 }
                 return
             }
@@ -162,10 +180,16 @@ class WifiRadio(
             awaitingScan.set(false)
             var count = 0
             val batch = ArrayList<Observation>(results.size)
+            val seen = HashSet<String>(results.size * 2)
             for (result in results) {
                 val obs = try {
                     if (result.BSSID.isNullOrBlank()) continue
-                    toObservation(result, nowWall, isFresh)
+                    seen += result.BSSID
+                    val ie = ieParses.getOrParse(result.BSSID, result.timestamp, result.capabilities) {
+                        val parsed = WifiIeParser.parse(result)
+                        IeParse(parsed, parsed.vendorIes.map { it.oui }.ifEmpty { vendorIeOuisOf(result) }.distinct())
+                    }
+                    toObservation(result, nowWall, isFresh, ie)
                 } catch (t: Throwable) {
                     Log.e(TAG, "scan result failed", t)
                     continue
@@ -178,6 +202,7 @@ class WifiRadio(
                     Log.e(TAG, "scan result failed", t)
                 }
             }
+            ieParses.retainOnly(seen)
             try {
                 onScanFinished(count, isFresh)
             } catch (t: Throwable) {
@@ -195,6 +220,8 @@ class WifiRadio(
         }
     }
 
+    private class IeParse(val parsed: WifiIeParser.Parsed, val vendorIeOuis: List<String>)
+
     private inline fun guardResults(block: () -> Unit) {
         try {
             block()
@@ -203,11 +230,11 @@ class WifiRadio(
         }
     }
 
-    private fun toObservation(result: ScanResult, nowWall: Long, fresh: Boolean): Observation {
+    private fun toObservation(result: ScanResult, nowWall: Long, fresh: Boolean, ie: IeParse): Observation {
         val ssid = result.ssidClean()
         val hidden = ssid.isBlank()
         val freq = result.frequency
-        val ies = WifiIeParser.parse(result)
+        val ies = ie.parsed
         val channel = ies.channelFromDs ?: channelOf(freq)
         val facts = app.fieldwatch.domain.RadioFacts(
             wifiStandard = WifiIeParser.wifiStandardLabel(result),
@@ -235,7 +262,7 @@ class WifiRadio(
             extras = "",
             at = nowWall,
             fresh = fresh,
-            vendorIeOuis = ies.vendorIes.map { it.oui }.ifEmpty { vendorIeOuisOf(result) }.distinct(),
+            vendorIeOuis = ie.vendorIeOuis,
             facts = facts,
         )
     }

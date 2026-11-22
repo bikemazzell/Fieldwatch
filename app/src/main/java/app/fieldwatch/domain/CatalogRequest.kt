@@ -103,5 +103,5 @@ internal object CatalogRequest {
     }
 
     private fun encode(text: String): String =
-        URLEncoder.encode(text, Charsets.UTF_8).replace("+", "%20")
+        URLEncoder.encode(text, "UTF-8").replace("+", "%20")
 }

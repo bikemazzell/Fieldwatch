@@ -1,7 +1,6 @@
 package app.fieldwatch.data
 
 import android.content.Context
-import app.fieldwatch.domain.CsvCells
 import app.fieldwatch.domain.LanguageText
 import app.fieldwatch.domain.Fleet
 import app.fieldwatch.domain.LogExportRadios
@@ -22,6 +21,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
 import java.io.OutputStreamWriter
+import java.io.RandomAccessFile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -41,12 +41,12 @@ class LogStore(context: Context) {
     private var format = LogFormat.CSV
     private var rotateBytes = 1024 * 1024
     private var lines = 0L
+    private var replay: LinkedHashMap<String, LogRadio>? = null
     private val iso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
         timeZone = TimeZone.getTimeZone("UTC")
     }
 
     val lineCount: Long get() = lines
-    val isPaused: Boolean get() = paused.get()
 
     @Volatile
     private var enabled = true
@@ -65,14 +65,20 @@ class LogStore(context: Context) {
         return mutex.withLock {
             if (paused.get() || generation.get() != gen) return@withLock lines
             withContext(Dispatchers.IO) {
-                val out = ensureWriter()
-                out.write(row)
-                unflushed++
-                if (unflushed >= 16) {
-                    out.flush()
-                    unflushed = 0
+                try {
+                    val out = ensureWriter()
+                    out.write(row)
+                    unflushed++
+                    if (unflushed >= 16) {
+                        out.flush()
+                        unflushed = 0
+                    }
+                    lines++
+                    replay?.let { LogReplay.ingest(sequenceOf(onDisk(row)), true, it) }
+                } catch (err: Throwable) {
+                    replay = null
+                    throw err
                 }
-                lines++
                 rotateIfNeeded()
                 lines
             }
@@ -86,8 +92,6 @@ class LogStore(context: Context) {
         ?.sortedBy { it.name }
         ?: emptyList()
 
-    fun allFiles(): List<File> = logParts()
-
     fun totalBytes(): Long = logParts().sumOf { it.length() }
 
     /** Unique radios from every rotating part. Re-match; ignore write-time fleets. */
@@ -96,6 +100,10 @@ class LogStore(context: Context) {
     ): List<LogRadio> = mutex.withLock {
         withContext(Dispatchers.IO) {
             flushWriter()
+            replay?.let { cached ->
+                onProgress(1L, 1L)
+                return@withContext cached.values.toList()
+            }
             val parts = logParts()
             val total = parts.sumOf { it.length() }.coerceAtLeast(1L)
             var copied = 0L
@@ -117,7 +125,25 @@ class LogStore(context: Context) {
                 }
             }
             onProgress(total, total)
+            if (appendsExtendReplay(parts)) replay = acc
             acc.values.toList()
+        }
+    }
+
+    private fun onDisk(row: String): String =
+        String(row.toByteArray(Charsets.UTF_8), Charsets.UTF_8).removeSuffix("\n")
+
+    /**
+     * A replay reads the parts in name order. An append extends it only when it
+     * lands after every line already there: the current part sorts last and ends a line.
+     */
+    private fun appendsExtendReplay(parts: List<File>): Boolean {
+        val current = currentFile()
+        if (parts.any { it.name > current.name }) return false
+        if (!current.exists() || current.length() == 0L) return true
+        return RandomAccessFile(current, "r").use {
+            it.seek(it.length() - 1)
+            it.read() == '\n'.code
         }
     }
 
@@ -236,6 +262,7 @@ class LogStore(context: Context) {
                 dir.listFiles()?.forEach { runCatching { it.delete() } }
                 index = 0
                 lines = 0
+                replay = null
                 generation.incrementAndGet()
                 0L
             }
@@ -271,37 +298,10 @@ class LogStore(context: Context) {
         val file = currentFile()
         if (file.length() < rotateBytes) return
         closeWriter()
+        replay = null
         index = (index + 1) % 12
         val next = currentFile()
         if (next.exists()) next.delete()
-    }
-
-    private fun csvLine(device: Sighting, names: String): String {
-        fun esc(v: String) = CsvCells.plain(v)
-        return listOf(
-            device.lastSeen.toString(),
-            iso.format(Date(device.lastSeen)),
-            device.kind.name,
-            device.mac,
-            esc(device.name),
-            device.rssi.toString(),
-            LogReplay.csvChannel(device.kind, device.channel),
-            LogReplay.csvFreq(device.kind, device.frequencyMhz),
-            device.oui,
-            esc(device.vendor.orEmpty()),
-            esc(names),
-            device.manufacturerId?.toString(16)?.uppercase().orEmpty(),
-            device.serviceUuids.joinToString("|"),
-            buildString {
-                if (device.randomized) append("RAND ")
-                if (device.hiddenSsid) append("HIDDEN ")
-            }.trim(),
-            LogReplay.advertisementField(device.rawHex, device.manufacturerDataHex),
-            device.latitude?.let { String.format(Locale.US, "%.6f", it) }.orEmpty(),
-            device.longitude?.let { String.format(Locale.US, "%.6f", it) }.orEmpty(),
-            device.vendorIeOuis.take(8).joinToString("|") { MacUtil.normalize(it) },
-            LogReplay.manufacturerField(device.manufacturerDataHex),
-        ).joinToString(",") + "\n"
     }
 
     private fun jsonLine(device: Sighting, names: String): String {
@@ -333,18 +333,5 @@ class LogStore(context: Context) {
         private const val CSV_HEADER =
             "timestamp,iso,kind,mac,name,rssi,channel,freq,oui,vendor,fleets,mfg,uuids,flags,raw,lat,lon,vendor_ie,mfg_hex\n"
 
-        private fun skipCsvHeader(input: java.io.BufferedInputStream) {
-            input.mark(512)
-            val line = StringBuilder()
-            while (true) {
-                val b = input.read()
-                if (b < 0 || b == '\n'.code) break
-                if (b != '\r'.code) line.append(b.toChar())
-                if (line.length > 400) break
-            }
-            if (!line.startsWith("timestamp")) {
-                input.reset()
-            }
-        }
     }
 }

@@ -113,15 +113,6 @@ class HuntTrack {
 
     fun holdingFlat(): Boolean = holdFlat
 
-    /**
-     * The local picture, when this walk is not on a fix.
-     * Null once the walk has been placed.
-     */
-    fun plainPicture(): HuntPlain? {
-        if (placed) return null
-        return HuntPlain(east, north, walkedM)
-    }
-
     fun uncertaintyM(): Double = max(UNCERTAINTY_FLOOR_M, UNCERTAINTY_RATE * walkedM)
 
     fun steeredDeg(): Double = if (haveHeading) headingDeg else Double.NaN
@@ -269,33 +260,6 @@ class HuntTrack {
         val globe = position()
         if (globe != null) return globe
         return project(LOCAL_LAT, LOCAL_LON, east, north)
-    }
-
-    /**
-     * Continue a plain walk that was left open. [samples] are hears from that picture.
-     * A walk already longer than [RECENTER_M] is not placed by a later fix.
-     */
-    fun resumePlain(saved: HuntPlain, samples: List<GpsSample>) {
-        if (placed) return
-        east = saved.east
-        north = saved.north
-        walkedM = saved.walkedM.coerceAtLeast(0.0)
-        for (sample in samples) {
-            if (!PayloadLocation.validCoord(sample.lat, sample.lon)) continue
-            if (!localPicture(sample.lat, sample.lon)) continue
-            val (hearEast, hearNorth, _) = offset(LOCAL_LAT, LOCAL_LON, sample.lat, sample.lon)
-            hears.add(Hear(hearEast, hearNorth, sample.rssi, sample.at, sample.lat, sample.lon, false))
-        }
-        if (hears.isNotEmpty()) hearGen += 1
-    }
-
-    /**
-     * Where a pre-fix picture point sits after the walk was placed.
-     * Uses the anchor from that first fix, so a later nudge does not move it.
-     */
-    fun fromLocal(lat: Double, lon: Double): Pair<Double, Double>? {
-        if (attachGen == 0) return null
-        return shift(attachAnchorLat, attachAnchorLon, lat, lon)
     }
 
     /**
@@ -499,11 +463,6 @@ class HuntTrack {
         return Triple(dEast, dNorth, hypot(dEast, dNorth))
     }
 
-    private fun shift(lat0: Double, lon0: Double, lat: Double, lon: Double): Pair<Double, Double> {
-        val (eastM, northM, _) = offset(LOCAL_LAT, LOCAL_LON, lat, lon)
-        return project(lat0, lon0, eastM, northM)
-    }
-
     private fun norm(deg: Double) = ((deg % 360.0) + 360.0) % 360.0
 
     private fun angleDiff(a: Double, b: Double): Double {
@@ -562,13 +521,6 @@ class HuntTrack {
         private const val LOCAL_PICTURE_M = 100_000.0
     }
 }
-
-/** A hunt walk that is not on a map yet. Leaving the page keeps this, and coming back continues it. */
-data class HuntPlain(
-    val east: Double,
-    val north: Double,
-    val walkedM: Double,
-)
 
 /**
  * A walking step from the accelerometer magnitude, gravity included.

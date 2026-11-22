@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 
 class Alerter(private val context: Context) {
     private val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    /** Main thread only, with every TTS and beep field below. */
     private val announced = HashSet<String>()
     private val main = Handler(Looper.getMainLooper())
     private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -55,11 +56,8 @@ class Alerter(private val context: Context) {
     private var utteranceStarted = false
     private var ttsSpeakTries = 0
     private var pendingSpeak: String? = null
-    /** Written off the main thread, read when the beep timer fires. */
-    @Volatile
     private var speakAfterBeep: String? = null
     /** Bumped before the beep is posted so a stale timer cannot eat the next phrase. */
-    @Volatile
     private var beepToken = 0
     /** Init failed, or speak() found the engine unbound. The next attempt builds a new one. */
     private var ttsFailed = false
@@ -140,11 +138,13 @@ class Alerter(private val context: Context) {
                 .build()
             manager.notify(noteId, note)
         }
-        if (!phrase.isNullOrBlank()) {
-            prepareVoice()
-            queueVoice(phrase, afterBeep = beep)
+        onMain {
+            if (!phrase.isNullOrBlank()) {
+                prepareVoice()
+                queueVoice(phrase, afterBeep = beep)
+            }
+            if (beep) beep(holdFocus = phrase.isNullOrBlank())
         }
-        if (beep) beep(holdFocus = phrase.isNullOrBlank())
         if (vibrate) vibrate()
     }
 
@@ -153,20 +153,23 @@ class Alerter(private val context: Context) {
         speakClass: Boolean = false,
         voiceWhat: AlertVoiceWhat = AlertVoiceWhat.CLASS,
     ) {
-        if (speakClass) {
-            prepareVoice()
-            queueVoice(testWatchPhrase(voiceWhat), afterBeep = beepOn)
+        onMain {
+            if (speakClass) {
+                prepareVoice()
+                queueVoice(testWatchPhrase(voiceWhat), afterBeep = beepOn)
+            }
+            if (beepOn) beep(holdFocus = !speakClass)
         }
-        if (beepOn) {
-            beep(holdFocus = !speakClass)
-            vibrate()
-        }
+        if (beepOn) vibrate()
     }
 
     /** Warm the TTS engine on the main thread so the first alert is not silent. */
     fun prepareVoice() {
-        if (Looper.myLooper() == Looper.getMainLooper()) ensureTts()
-        else main.post { ensureTts() }
+        onMain { ensureTts() }
+    }
+
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block() else main.post(block)
     }
 
     /**
@@ -200,11 +203,13 @@ class Alerter(private val context: Context) {
         } else {
             manager.cancel(GNSS_NOTE_ID)
         }
-        if (!phrase.isNullOrBlank()) {
-            prepareVoice()
-            queueVoice(phrase, afterBeep = beep)
+        onMain {
+            if (!phrase.isNullOrBlank()) {
+                prepareVoice()
+                queueVoice(phrase, afterBeep = beep)
+            }
+            if (beep) beep(holdFocus = phrase.isNullOrBlank())
         }
-        if (beep) beep(holdFocus = phrase.isNullOrBlank())
     }
 
     fun clearGnssNote() {
@@ -253,11 +258,13 @@ class Alerter(private val context: Context) {
         }
         // Store the phrase before posting the beep. The timer can finish
         // before a later write, and then the line is never spoken.
-        if (!phrase.isNullOrBlank()) {
-            prepareVoice()
-            queueVoice(phrase, afterBeep = beep)
+        onMain {
+            if (!phrase.isNullOrBlank()) {
+                prepareVoice()
+                queueVoice(phrase, afterBeep = beep)
+            }
+            if (beep) beep(holdFocus = phrase.isNullOrBlank())
         }
-        if (beep) beep(holdFocus = phrase.isNullOrBlank())
         if (vibrate) vibrate()
     }
 
@@ -295,11 +302,13 @@ class Alerter(private val context: Context) {
         } else {
             manager.cancel(TRUSTED_NOTE_ID)
         }
-        if (!phrase.isNullOrBlank()) {
-            prepareVoice()
-            queueVoice(phrase, afterBeep = beep)
+        onMain {
+            if (!phrase.isNullOrBlank()) {
+                prepareVoice()
+                queueVoice(phrase, afterBeep = beep)
+            }
+            if (beep) beep(holdFocus = phrase.isNullOrBlank())
         }
-        if (beep) beep(holdFocus = phrase.isNullOrBlank())
     }
 
     fun clearTrustedNote() {
@@ -336,11 +345,13 @@ class Alerter(private val context: Context) {
         } else {
             manager.cancel(CELL_NOTE_ID)
         }
-        if (!phrase.isNullOrBlank()) {
-            prepareVoice()
-            queueVoice(phrase, afterBeep = beep)
+        onMain {
+            if (!phrase.isNullOrBlank()) {
+                prepareVoice()
+                queueVoice(phrase, afterBeep = beep)
+            }
+            if (beep) beep(holdFocus = phrase.isNullOrBlank())
         }
-        if (beep) beep(holdFocus = phrase.isNullOrBlank())
     }
 
     fun clearCellNote() {
@@ -381,11 +392,13 @@ class Alerter(private val context: Context) {
 
     /** Beep and speak a tracker warning. The notification stays in [trackerNote]. */
     fun trackerCue(phrase: String?, beep: Boolean) {
-        if (!phrase.isNullOrBlank()) {
-            prepareVoice()
-            queueVoice(phrase, afterBeep = beep)
+        onMain {
+            if (!phrase.isNullOrBlank()) {
+                prepareVoice()
+                queueVoice(phrase, afterBeep = beep)
+            }
+            if (beep) beep(holdFocus = phrase.isNullOrBlank())
         }
-        if (beep) beep(holdFocus = phrase.isNullOrBlank())
     }
 
     /**
@@ -431,7 +444,7 @@ class Alerter(private val context: Context) {
     }
 
     fun forgetAnnounced() {
-        announced.clear()
+        onMain { announced.clear() }
     }
 
     private fun fireNewAppearances(
@@ -452,12 +465,8 @@ class Alerter(private val context: Context) {
         val now = System.currentTimeMillis()
         val onAir = devices.filter { !it.gone }
         val liveKeys = onAir.map { it.key }.toSet()
-        announced.removeAll { token -> token.substringAfter('\t') !in liveKeys }
-        val fleetNames = fleets.associateBy { it.id }
         val mineKeys = RadioBookmarks.mineKeys(watchlist)
-        var beepFired = false
-        var voicePhrase: String? = null
-        if (voiceOn) prepareVoice()
+        val candidates = ArrayList<Pair<WatchTarget, Sighting>>()
         for (target in watchlist) {
             for (device in onAir) {
                 if (swarmQuietsFleetWatch(target.deviceKey, target.fleetId, quietDroneFleets)) continue
@@ -469,33 +478,60 @@ class Alerter(private val context: Context) {
                 }
                 if (!shouldRaiseWatch(target, device, mineKeys)) continue
                 if (!visibleOnLive(device)) continue
-                val token = "${target.id}\t${device.key}"
-                if (token in announced) continue
                 if (!arrivalsOnly && !isNewAppearance(device, now)) continue
-                announced.add(token)
-                val label = MacUtil.redactMacIn(
-                    target.label.ifBlank {
-                        fleetNames[target.fleetId]?.name ?: device.displayName
-                    },
-                    device.mac,
-                    demoMode,
-                )
-                if (shadeOn && target.notify) notify(label, device, demoMode)
-                if (target.vibrate) vibrate()
-                if (voiceOn && voicePhrase == null) {
-                    voicePhrase = spokenWatchPhrase(
-                        device, fleets, voiceWhat, target, spokenNames, watchlist,
-                    )
-                }
-                if (beepOn && !beepFired) {
-                    // The scan loop keeps going after this. Queue first so the
-                    // beep timer cannot finish while the phrase is still unset.
-                    if (voicePhrase != null) queueVoice(voicePhrase, afterBeep = true)
-                    beep(holdFocus = voicePhrase == null)
-                    beepFired = true
-                }
-                if (beepOn || voiceOn) _flashes.tryEmit(device.key)
+                candidates.add(target to device)
             }
+        }
+        onMain {
+            announceCandidates(
+                candidates, liveKeys, fleets, watchlist, beepOn, voiceOn, voiceWhat, shadeOn,
+                demoMode, spokenNames,
+            )
+        }
+    }
+
+    private fun announceCandidates(
+        candidates: List<Pair<WatchTarget, Sighting>>,
+        liveKeys: Set<String>,
+        fleets: List<Fleet>,
+        watchlist: List<WatchTarget>,
+        beepOn: Boolean,
+        voiceOn: Boolean,
+        voiceWhat: AlertVoiceWhat,
+        shadeOn: Boolean,
+        demoMode: Boolean,
+        spokenNames: List<SpokenName>,
+    ) {
+        announced.removeAll { token -> token.substringAfter('\t') !in liveKeys }
+        val fleetNames = fleets.associateBy { it.id }
+        var beepFired = false
+        var voicePhrase: String? = null
+        if (voiceOn) prepareVoice()
+        for ((target, device) in candidates) {
+            val token = "${target.id}\t${device.key}"
+            if (!announced.add(token)) continue
+            val label = MacUtil.redactMacIn(
+                target.label.ifBlank {
+                    fleetNames[target.fleetId]?.name ?: device.displayName
+                },
+                device.mac,
+                demoMode,
+            )
+            if (shadeOn && target.notify) notify(label, device, demoMode)
+            if (target.vibrate) vibrate()
+            if (voiceOn && voicePhrase == null) {
+                voicePhrase = spokenWatchPhrase(
+                    device, fleets, voiceWhat, target, spokenNames, watchlist,
+                )
+            }
+            if (beepOn && !beepFired) {
+                // The scan loop keeps going after this. Queue first so the
+                // beep timer cannot finish while the phrase is still unset.
+                if (voicePhrase != null) queueVoice(voicePhrase, afterBeep = true)
+                beep(holdFocus = voicePhrase == null)
+                beepFired = true
+            }
+            if (beepOn || voiceOn) _flashes.tryEmit(device.key)
         }
         if (voicePhrase != null && !beepFired) queueVoice(voicePhrase, afterBeep = false)
     }
@@ -779,28 +815,36 @@ class Alerter(private val context: Context) {
             }
             engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
-                    utteranceStarted = true
-                    speaking = true
-                    main.removeCallbacks(speakWatchdog)
-                    main.postDelayed(speakWatchdog, SPEAK_TIMEOUT_MS)
+                    main.post {
+                        utteranceStarted = true
+                        speaking = true
+                        main.removeCallbacks(speakWatchdog)
+                        main.postDelayed(speakWatchdog, SPEAK_TIMEOUT_MS)
+                    }
                 }
                 override fun onDone(utteranceId: String?) {
-                    speaking = false
-                    utteranceStarted = false
-                    pendingSpeak = null
-                    ttsSpeakTries = 0
-                    main.removeCallbacks(speakWatchdog)
+                    main.post {
+                        speaking = false
+                        utteranceStarted = false
+                        pendingSpeak = null
+                        ttsSpeakTries = 0
+                        main.removeCallbacks(speakWatchdog)
+                    }
                 }
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) {
-                    speaking = false
-                    utteranceStarted = false
-                    main.removeCallbacks(speakWatchdog)
+                    main.post {
+                        speaking = false
+                        utteranceStarted = false
+                        main.removeCallbacks(speakWatchdog)
+                    }
                 }
                 override fun onError(utteranceId: String?, errorCode: Int) {
-                    speaking = false
-                    utteranceStarted = false
-                    main.removeCallbacks(speakWatchdog)
+                    main.post {
+                        speaking = false
+                        utteranceStarted = false
+                        main.removeCallbacks(speakWatchdog)
+                    }
                 }
             })
             // Samsung often drops the first speak() if it runs inside onInit.

@@ -159,10 +159,6 @@ class TrustedNetworkStore(private val file: File, private val scope: CoroutineSc
         }
     }
 
-    fun clearNotice() {
-        _notice.value = null
-    }
-
     fun clearImportFailed() {
         _importProblem.value = null
     }
@@ -261,12 +257,7 @@ class TrustedNetworkStore(private val file: File, private val scope: CoroutineSc
         }
         val ok = runCatching {
             file.parentFile?.mkdirs()
-            val tmp = File(file.parentFile, file.name + ".tmp")
-            tmp.writeText(json.encodeToString(TrustedFile.serializer(), snap))
-            if (!tmp.renameTo(file)) {
-                file.writeText(tmp.readText())
-                tmp.delete()
-            }
+            writeAtomic(file) { it.write(json.encodeToString(TrustedFile.serializer(), snap).toByteArray()) }
         }.isSuccess
         if (!ok) synchronized(lock) { dirty = true }
         return ok

@@ -312,11 +312,15 @@ class DeviceStore(
                 bleHold = bleHold,
             )
             val last = device.presence.lastOrNull()
-            when {
-                gone && last != null && last.end == null -> last.end = device.lastSeen
-                !gone && last != null && last.end != null -> last.end = null
+            val presence = when {
+                gone && last != null && last.end == null ->
+                    device.presence.dropLast(1) + last.copy(end = device.lastSeen)
+                !gone && last != null && last.end != null ->
+                    device.presence.dropLast(1) + last.copy(end = null)
+                else -> device.presence
             }
-            if (device.gone == gone) device else device.copy(gone = gone)
+            if (device.gone == gone && presence === device.presence) device
+            else device.copy(gone = gone, presence = presence)
         }
         relabel(live.values, fleets)
         live.values.filter { device ->

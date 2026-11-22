@@ -302,41 +302,6 @@ class HuntTest {
     }
 
     @Test
-    fun aResumedPlainWalkContinuesAndALongOneDoesNotJumpOntoAFix() {
-        val lat = 36.2361322
-        val lon = -115.0820944
-        val short = HuntTrack()
-        short.heading(0.0, 1_000L)
-        repeat(6) { assertTrue(short.step(1_100L + it * 300L)) }
-        short.note(-50, 4_000L)
-        val saved = short.plainPicture()!!
-        val resumed = HuntTrack()
-        resumed.resumePlain(saved, short.marks())
-        assertTrue(!resumed.onGlobe())
-        assertEquals(short.display().first, resumed.display().first, 1e-9)
-        assertEquals(short.display().second, resumed.display().second, 1e-9)
-        resumed.gps(lat, lon, 5f, 5_000L, fresh = true)
-        resumed.gps(lat, lon, 5f, 6_000L, fresh = true)
-        assertTrue(resumed.onGlobe())
-        assertTrue(Geo.meters(lat, lon, resumed.position()!!.first, resumed.position()!!.second) < 0.5)
-        assertTrue(resumed.marks().isNotEmpty())
-
-        val long = HuntTrack()
-        long.heading(0.0, 1_000L)
-        val steps = (HuntTrack.RECENTER_M / HuntTrack.STRIDE_M).toInt() + 3
-        repeat(steps) { assertTrue(long.step(1_100L + it * 300L)) }
-        val kept = long.plainPicture()!!
-        val again = HuntTrack()
-        again.resumePlain(kept, long.marks())
-        val dot = again.display()
-        again.gps(lat, lon, 5f, 30_000L, fresh = true)
-        again.gps(lat, lon, 5f, 31_000L, fresh = true)
-        assertTrue(!again.onGlobe())
-        assertEquals(dot.first, again.display().first, 1e-9)
-        assertEquals(dot.second, again.display().second, 1e-9)
-    }
-
-    @Test
     fun aCommittedFixPlacesTheWalkAndTheLocalPictureDoesNot() {
         val track = HuntTrack()
         val lat = 36.2361322
@@ -347,7 +312,6 @@ class HuntTest {
         assertTrue(track.onGlobe())
         assertEquals(lat, track.position()!!.first, 1e-6)
         assertEquals(lon, track.position()!!.second, 1e-6)
-        assertNull(track.plainPicture())
     }
 
     @Test

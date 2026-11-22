@@ -3,7 +3,6 @@ package app.fieldwatch.data
 import app.fieldwatch.domain.AppUpdate
 import java.io.File
 import java.net.HttpURLConnection
-import java.net.URL
 import kotlinx.coroutines.CancellationException
 
 /** The notes file and the APK on GitHub. No account. The notes file does not choose the address. */
@@ -26,20 +25,9 @@ object AppUpdateClient {
             if (code !in 200..299) return null
             val advertised = connection.contentLengthLong
             if (advertised == 0L || advertised > AppUpdate.MAX_NOTE_BYTES) return null
-            val out = java.io.ByteArrayOutputStream()
-            val buf = ByteArray(2048)
-            var total = 0
-            connection.inputStream.use { input ->
-                while (true) {
-                    val n = input.read(buf)
-                    if (n < 0) break
-                    total += n
-                    if (total > AppUpdate.MAX_NOTE_BYTES) return null
-                    out.write(buf, 0, n)
-                }
-            }
-            if (out.size() == 0) return null
-            return out.toString(Charsets.UTF_8.name())
+            val bytes = connection.inputStream.use { Http.readCapped(it, AppUpdate.MAX_NOTE_BYTES) } ?: return null
+            if (bytes.isEmpty()) return null
+            return String(bytes, Charsets.UTF_8)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -119,16 +107,17 @@ object AppUpdateClient {
         readTimeoutMs: Int,
         accept: String,
     ): HttpURLConnection {
-        return (URL(url).openConnection() as HttpURLConnection).apply {
-            instanceFollowRedirects = true
-            useCaches = false
-            connectTimeout = connectTimeoutMs
-            readTimeout = readTimeoutMs
-            requestMethod = "GET"
-            setRequestProperty("Accept", accept)
-            setRequestProperty("Accept-Encoding", "identity")
-            setRequestProperty("Cache-Control", "no-cache")
-            setRequestProperty("User-Agent", userAgent)
-        }
+        return Http.open(
+            url,
+            connectTimeoutMs,
+            readTimeoutMs,
+            mapOf(
+                "Accept" to accept,
+                "Accept-Encoding" to "identity",
+                "Cache-Control" to "no-cache",
+                "User-Agent" to userAgent,
+            ),
+            useCaches = false,
+        )
     }
 }

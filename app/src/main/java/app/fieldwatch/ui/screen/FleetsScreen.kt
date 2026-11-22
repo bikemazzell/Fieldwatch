@@ -50,8 +50,10 @@ import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -83,6 +85,7 @@ import app.fieldwatch.domain.visibleOnPhone
 import app.fieldwatch.ui.NestedTabInsets
 import app.fieldwatch.ui.NestedTopBar
 import app.fieldwatch.ui.RadioClassBadge
+import app.fieldwatch.ui.ConfigUi
 import app.fieldwatch.ui.FieldwatchUi
 import app.fieldwatch.ui.FieldwatchViewModel
 import app.fieldwatch.ui.component.SectionCard
@@ -91,18 +94,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FleetsScreen(
-    state: FieldwatchUi,
+    state: ConfigUi,
     vm: FieldwatchViewModel,
     onCandidateDraftClosed: () -> Unit = {},
 ) {
-    val draft = state.draftFleet
+    val liveUi = vm.ui.collectAsStateWithLifecycle()
+    val draftFleet by remember { derivedStateOf { liveUi.value.draftFleet } }
+    val draft = draftFleet
     if (draft != null) {
         val isNew = state.fleets.none { it.id == draft.id }
         var working by remember(draft.id) { mutableStateOf(draft) }
         var editingDecode by remember(draft.id) { mutableStateOf(false) }
         if (editingDecode) {
-            val preview = state.devices.firstOrNull { working.id in it.fleetIds }
-                ?: state.selected?.takeIf { working.id in it.fleetIds }
+            val live = liveUi.value
+            val preview = live.devices.firstOrNull { working.id in it.fleetIds }
+                ?: live.selected?.takeIf { working.id in it.fleetIds }
             DecodeFieldsScreen(
                 fleet = working,
                 previewDevice = preview,
@@ -201,14 +207,14 @@ fun FleetsScreen(
                     if (expanded) {
                         items(rows, key = { it.id }) { fleet ->
                             Box(Modifier.padding(start = 16.dp)) {
-                                SignatureRow(fleet, state, vm)
+                                SignatureRow(fleet, liveUi, vm)
                             }
                         }
                     }
                 }
             } else {
                 items(shown.sortedForCatalog(sort), key = { it.id }) { fleet ->
-                    SignatureRow(fleet, state, vm)
+                    SignatureRow(fleet, liveUi, vm)
                 }
             }
         }
@@ -254,9 +260,11 @@ private fun SignatureClassHeader(
 }
 
 @Composable
-private fun SignatureRow(fleet: Fleet, state: FieldwatchUi, vm: FieldwatchViewModel) {
+private fun SignatureRow(fleet: Fleet, liveUi: State<FieldwatchUi>, vm: FieldwatchViewModel) {
     val color = Color(Palette.color(fleet.colorIndex)).nightIf(LocalNightMode.current)
-    val liveHits = state.devices.count { fleet.id in it.fleetIds && !it.gone }
+    val liveHits by remember(fleet.id) {
+        derivedStateOf { liveUi.value.devices.count { fleet.id in it.fleetIds && !it.gone } }
+    }
     Surface(
         onClick = { vm.editFleet(fleet) },
         shape = RoundedCornerShape(8.dp),

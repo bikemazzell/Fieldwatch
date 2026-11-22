@@ -16,12 +16,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
-import java.net.SocketException
-import java.net.SocketTimeoutException
-import java.net.URL
-import java.net.UnknownHostException
 import java.util.zip.GZIPInputStream
-import javax.net.ssl.SSLException
 
 /**
  * One downloaded list. Plate readers and the other sensors are separate files.
@@ -97,11 +92,7 @@ object FlockFiles {
         data class Failed(val reason: Reason, val code: Int = 0) : Fetch()
     }
 
-    fun failReason(error: Exception): Reason = when (error) {
-        is SSLException -> Reason.TRUST
-        is UnknownHostException, is SocketTimeoutException, is SocketException -> Reason.REACH
-        else -> Reason.OTHER
-    }
+    fun failReason(error: Exception): Reason = Http.failReason(error, Reason.REACH, Reason.TRUST, Reason.OTHER)
 
     fun file(dir: File, list: SensorList = SensorList.PLATES): File = File(dir, list.fileName)
 
@@ -254,18 +245,12 @@ object FlockFiles {
     }
 
     private fun open(list: SensorList, method: String, ifNoneMatch: String?): HttpURLConnection {
-        return (URL(list.url).openConnection() as HttpURLConnection).apply {
-            instanceFollowRedirects = true
-            connectTimeout = 15_000
-            readTimeout = 30_000
-            requestMethod = method
-            setRequestProperty("Accept", "application/geo+json, application/json, application/gzip")
-            setRequestProperty(
-                "User-Agent",
-                "Fieldwatch/${BuildConfig.VERSION_NAME} (https://github.com/OffGridPete/Fieldwatch)",
-            )
-            if (!ifNoneMatch.isNullOrEmpty()) setRequestProperty("If-None-Match", ifNoneMatch)
-        }
+        val headers = mutableMapOf(
+            "Accept" to "application/geo+json, application/json, application/gzip",
+            "User-Agent" to "Fieldwatch/${BuildConfig.VERSION_NAME} (https://github.com/OffGridPete/Fieldwatch)",
+        )
+        if (!ifNoneMatch.isNullOrEmpty()) headers["If-None-Match"] = ifNoneMatch
+        return Http.open(list.url, 15_000, 30_000, headers, method = method)
     }
 
     private fun parseFile(file: File): List<FlockCamera> {

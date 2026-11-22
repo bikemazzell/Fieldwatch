@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.fieldwatch.domain.LanguageText
 import app.fieldwatch.domain.PlaceReport
-import app.fieldwatch.ui.FieldwatchUi
+import app.fieldwatch.ui.ConfigUi
 import app.fieldwatch.ui.FieldwatchViewModel
 import java.time.ZoneId
 
@@ -44,7 +44,7 @@ import java.time.ZoneId
  */
 @Composable
 internal fun PlaceReportPage(
-    state: FieldwatchUi,
+    state: ConfigUi,
     vm: FieldwatchViewModel,
     onOpen: (String) -> Unit,
 ) {
@@ -53,6 +53,7 @@ internal fun PlaceReportPage(
         Note(LanguageText.text("reports.places.off"))
         return
     }
+    val liveUi by vm.ui.collectAsStateWithLifecycle()
     val streets by vm.placeStreetNames.collectAsStateWithLifecycle()
     val mapKeyRev by vm.mapKeyRevision.collectAsStateWithLifecycle()
     LaunchedEffect(settings.onlineLookup, settings.demoMode) {
@@ -60,7 +61,7 @@ internal fun PlaceReportPage(
     }
     val rows = PlaceReport.rows(
         records = vm.placeRecords(),
-        devices = state.devices,
+        devices = liveUi.devices,
         fleets = state.fleets,
         watchlist = state.watchlist,
         now = System.currentTimeMillis(),

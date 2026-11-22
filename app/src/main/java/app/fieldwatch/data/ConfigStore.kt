@@ -41,7 +41,6 @@ import java.io.File
 class ConfigStore(context: Context) {
     private val file = File(context.filesDir, "config.json")
     private val json = Json {
-        prettyPrint = true
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
@@ -95,12 +94,7 @@ class ConfigStore(context: Context) {
     /** Writes first. A failed write leaves the catalog and settings already on the phone. */
     private suspend fun writeConfig(next: PersistedConfig) {
         withContext(Dispatchers.IO) {
-            val tmp = File(file.parentFile, "config.tmp")
-            tmp.writeText(json.encodeToString(next))
-            if (!tmp.renameTo(file)) {
-                file.writeText(tmp.readText())
-                tmp.delete()
-            }
+            writeAtomic(file) { it.write(json.encodeToString(next).toByteArray()) }
         }
         _config.value = next
     }

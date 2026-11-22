@@ -152,7 +152,8 @@ import app.fieldwatch.ui.theme.nightIf
 
 @Composable
 fun FieldwatchRoot(vm: FieldwatchViewModel, onRequestPermissions: () -> Unit) {
-    val state by vm.ui.collectAsStateWithLifecycle()
+    val config by vm.configUi.collectAsStateWithLifecycle()
+    val permissionsOk by vm.permissionsOk.collectAsStateWithLifecycle()
     val language by vm.language.collectAsStateWithLifecycle()
     val languageRev by LanguageText.revision.collectAsStateWithLifecycle()
     val importLanguage = rememberLauncherForActivityResult(
@@ -160,7 +161,7 @@ fun FieldwatchRoot(vm: FieldwatchViewModel, onRequestPermissions: () -> Unit) {
     ) { uri -> uri?.let(vm::importLanguageFromUri) }
     FieldwatchTheme(
         darkTheme = true,
-        nightMode = state.settings.nightMode,
+        nightMode = config.settings.nightMode,
     ) {
         if (languageRev >= 0) {
             if (language.snap.showDoor) {
@@ -168,12 +169,12 @@ fun FieldwatchRoot(vm: FieldwatchViewModel, onRequestPermissions: () -> Unit) {
                     onImport = { importLanguage.launch(arrayOf("application/json", "text/plain", "*/*")) },
                     onEnglish = vm::dismissLanguageDoor,
                 )
-            } else if (!state.settings.disclaimerOk()) {
+            } else if (!config.settings.disclaimerOk()) {
                 DisclaimerGate(onAccept = vm::acceptDisclaimer)
-            } else if (!state.permissionsOk) {
+            } else if (!permissionsOk) {
                 PermissionGate(onRequestPermissions)
             } else {
-                FieldwatchShell(state, vm)
+                FieldwatchShell(vm)
             }
             val context = LocalContext.current
             val export by vm.export.collectAsStateWithLifecycle()
@@ -374,7 +375,9 @@ private fun AppUpdateNotice(title: String, body: String, onClose: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FieldwatchShell(state: FieldwatchUi, vm: FieldwatchViewModel) {
+private fun FieldwatchShell(vm: FieldwatchViewModel) {
+    val state by vm.ui.collectAsStateWithLifecycle()
+    val config by vm.configUi.collectAsStateWithLifecycle()
     val nav = rememberNavController()
     val backStackEntry by nav.currentBackStackEntryAsState()
     val route = backStackEntry?.destination?.route ?: "live"
@@ -878,7 +881,7 @@ private fun FieldwatchShell(state: FieldwatchUi, vm: FieldwatchViewModel) {
             }
             composable("fleets") {
                 FleetsScreen(
-                    state = state,
+                    state = config,
                     vm = vm,
                     onCandidateDraftClosed = {
                         if (!nav.popBackStack("candidates", false)) {
@@ -887,10 +890,10 @@ private fun FieldwatchShell(state: FieldwatchUi, vm: FieldwatchViewModel) {
                     },
                 )
             }
-            composable("filters") { FiltersScreen(state, vm) }
+            composable("filters") { FiltersScreen(config, vm) }
             composable("reports") {
                 ReportsScreen(
-                    state = state,
+                    state = config,
                     vm = vm,
                     exporting = export.active,
                     onSaveToStorage = { saveLauncher.launch(vm.suggestedExportName()) },
@@ -910,7 +913,7 @@ private fun FieldwatchShell(state: FieldwatchUi, vm: FieldwatchViewModel) {
             composable("candidates") {
                 CandidatesScreen(
                     vm = vm,
-                    demoMode = state.settings.demoMode,
+                    demoMode = config.settings.demoMode,
                     onBack = { nav.popBackStack() },
                     onCreate = { candidate ->
                         vm.beginCreateFromCandidate(candidate)
@@ -920,7 +923,7 @@ private fun FieldwatchShell(state: FieldwatchUi, vm: FieldwatchViewModel) {
             }
             composable("settings") {
                 SettingsScreen(
-                    state = state,
+                    state = config,
                     vm = vm,
                     onRadioBookmarks = { nav.navigate("radio-bookmarks") },
                     onSpokenNames = { nav.navigate("spoken-names") },
@@ -933,18 +936,18 @@ private fun FieldwatchShell(state: FieldwatchUi, vm: FieldwatchViewModel) {
                 )
             }
             composable("scan-status") {
-                ScanStatusScreen(state = state, onBack = { nav.popBackStack() })
+                ScanStatusScreen(state = config, vm = vm, onBack = { nav.popBackStack() })
             }
             composable("spoken-names") {
                 SpokenNamesScreen(
-                    state = state,
+                    state = config,
                     vm = vm,
                     onBack = { nav.popBackStack() },
                 )
             }
             composable("radio-bookmarks") {
                 RadioBookmarksScreen(
-                    state = state,
+                    state = config,
                     vm = vm,
                     onBack = { nav.popBackStack() },
                     onOpen = { key ->
