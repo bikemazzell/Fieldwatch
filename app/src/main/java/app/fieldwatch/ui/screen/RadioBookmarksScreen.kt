@@ -36,9 +36,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,19 +56,22 @@ import app.fieldwatch.domain.WatchTarget
 import app.fieldwatch.ui.NestedTabInsets
 import app.fieldwatch.ui.NestedTopBar
 import app.fieldwatch.ui.RadioKindMark
-import app.fieldwatch.ui.FieldwatchUi
+import app.fieldwatch.ui.ConfigUi
 import app.fieldwatch.ui.FieldwatchViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RadioBookmarksScreen(
-    state: FieldwatchUi,
+    state: ConfigUi,
     vm: FieldwatchViewModel,
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
 ) {
     val radios = RadioBookmarks.radios(state.watchlist)
-    val liveKeys = state.devices.filter { !it.gone }.map { it.key }.toSet()
+    val liveUi = vm.ui.collectAsStateWithLifecycle()
+    val liveKeys by remember {
+        derivedStateOf { liveUi.value.devices.filter { !it.gone }.map { it.key }.toSet() }
+    }
     val demoMode = state.settings.demoMode
     var clearAll by remember { mutableStateOf(false) }
     var renameId by remember { mutableStateOf<String?>(null) }

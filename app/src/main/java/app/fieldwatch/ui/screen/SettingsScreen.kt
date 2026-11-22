@@ -56,6 +56,8 @@ import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -101,6 +103,7 @@ import app.fieldwatch.domain.TakUdpPreset
 import app.fieldwatch.radio.WifiRadio
 import app.fieldwatch.ui.NestedTabInsets
 import app.fieldwatch.ui.NestedTopBar
+import app.fieldwatch.ui.ConfigUi
 import app.fieldwatch.ui.FieldwatchUi
 import app.fieldwatch.ui.FieldwatchViewModel
 import app.fieldwatch.ui.FlockLayerUi
@@ -114,7 +117,7 @@ import java.net.NetworkInterface
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
-    state: FieldwatchUi,
+    state: ConfigUi,
     vm: FieldwatchViewModel,
     onRadioBookmarks: () -> Unit,
     onSpokenNames: () -> Unit,
@@ -123,6 +126,8 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val settings = state.settings
+    val liveUi = vm.ui.collectAsStateWithLifecycle()
+    val logLines by remember { derivedStateOf { liveUi.value.logLines } }
     val flock by vm.flockLayerUi.collectAsStateWithLifecycle()
     val sensors by vm.sensorLayerUi.collectAsStateWithLifecycle()
     val saveSignatures = rememberLauncherForActivityResult(
@@ -182,8 +187,8 @@ fun SettingsScreen(
             CellWatchPage(
                 vm,
                 settings,
-                state.phoneLat,
-                state.phoneLon,
+                liveUi.value.phoneLat,
+                liveUi.value.phoneLon,
                 onPlaceBack = { closeCellPlace = it },
                 modifier = Modifier
                     .padding(pad)
@@ -318,13 +323,7 @@ fun SettingsScreen(
                     )
                 }
             }
-            StableCaption(
-                state.throttleHint.ifBlank { " " },
-                LanguageText.text("ui.wi.fi.waiting.os"),
-                LanguageText.text("ui.wi.fi.scanning"),
-                LanguageText.text("ui.wi.fi.next.99s"),
-                " ",
-            )
+            ThrottleHintCaption(liveUi)
 
             val lifecycleOwner = LocalLifecycleOwner.current
             var osThrottled by remember { mutableStateOf(WifiRadio.osScanThrottled(context)) }
@@ -1064,7 +1063,7 @@ fun SettingsScreen(
             }
             }
             if (settings.takEnabled) {
-                TakFeedSettings(settings, vm, state.takStatus, state.takInstallTag)
+                TakFeedSettings(settings, vm, state.takInstallTag)
             }
             }
 
@@ -1139,7 +1138,7 @@ fun SettingsScreen(
                     LanguageText.text(
                         "reports.log",
                         mapOf(
-                            "n" to state.logLines.toString(),
+                            "n" to logLines.toString(),
                             "kb" to (vm.logBytes() / 1024).toString(),
                         ),
                     ) + ". " + LanguageText.text("ui.share.save.reset.clear"),
@@ -1821,7 +1820,6 @@ private fun SocialChip(
 private fun TakFeedSettings(
     settings: AppSettings,
     vm: FieldwatchViewModel,
-    status: TakFeedStatus,
     installTag: String,
 ) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1934,7 +1932,8 @@ private fun TakFeedSettings(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         enabled = !settings.demoMode,
     )
-    Text(takStatusLine(status), style = MaterialTheme.typography.bodySmall, color = muted)
+    val liveUi = vm.ui.collectAsStateWithLifecycle()
+    TakStatusLine(liveUi, muted)
     }
     SectionCard(LanguageText.text("ui.what.send")) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2057,6 +2056,22 @@ private fun TakFeedSettings(
     }
     Note(LanguageText.text("ui.adds.note.phone.s"))
     }
+}
+
+@Composable
+private fun ThrottleHintCaption(liveUi: State<FieldwatchUi>) {
+    StableCaption(
+        liveUi.value.throttleHint.ifBlank { " " },
+        LanguageText.text("ui.wi.fi.waiting.os"),
+        LanguageText.text("ui.wi.fi.scanning"),
+        LanguageText.text("ui.wi.fi.next.99s"),
+        " ",
+    )
+}
+
+@Composable
+private fun TakStatusLine(liveUi: State<FieldwatchUi>, color: Color) {
+    Text(takStatusLine(liveUi.value.takStatus), style = MaterialTheme.typography.bodySmall, color = color)
 }
 
 private fun takStatusLine(status: TakFeedStatus): String {

@@ -71,6 +71,7 @@ import app.fieldwatch.domain.CatalogRequest
 import app.fieldwatch.domain.ClassOutline
 import app.fieldwatch.domain.CoTravel
 import app.fieldwatch.domain.FilterPreset
+import app.fieldwatch.domain.PersistedConfig
 import app.fieldwatch.domain.FilterState
 import app.fieldwatch.domain.Fleet
 import app.fieldwatch.domain.Hunt
@@ -139,6 +140,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
@@ -256,6 +258,26 @@ data class FieldwatchUi(
     val phoneLon: Double? = null,
     /** Degrees clockwise from north. NaN until GPS has shown a direction. */
     val travelDeg: Double = Double.NaN,
+)
+
+data class ConfigUi(
+    val fleets: List<Fleet> = emptyList(),
+    val filter: FilterState = FilterState(),
+    val presets: List<FilterPreset> = emptyList(),
+    val watchlist: List<WatchTarget> = emptyList(),
+    val settings: AppSettings = AppSettings(),
+    val takInstallTag: String = "",
+    val catalogVersion: Int = 0,
+)
+
+private fun PersistedConfig.toUi() = ConfigUi(
+    fleets = fleets,
+    filter = filter,
+    presets = presets,
+    watchlist = watchlist,
+    settings = settings,
+    takInstallTag = takInstallTag,
+    catalogVersion = version,
 )
 
 class FieldwatchViewModel(application: Application) : AndroidViewModel(application) {
@@ -660,6 +682,11 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, PairingFlood.FloodHide())
 
+    val configUi: StateFlow<ConfigUi> = app.config.config
+        .map { it.toUi() }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, app.config.config.value.toUi())
+
     private val liveUi: StateFlow<FieldwatchUi> = combine(
         combine(app.devices.devices, app.devices.stats, app.config.config) { devices, stats, config ->
             Triple(devices, stats, config)
@@ -858,6 +885,10 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         SharingStarted.WhileSubscribed(5_000),
         FieldwatchUi(settings = app.config.settings, takInstallTag = app.config.takInstallTag),
     )
+
+    val permissionsOk: StateFlow<Boolean> = ui
+        .map { it.permissionsOk }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     val hunt: StateFlow<HuntUi> = combine(
         combine(huntKey, huntStartedAt, huntPeakRssi, huntSamples, app.huntCloud) { key, started, peak, samples, cloud ->

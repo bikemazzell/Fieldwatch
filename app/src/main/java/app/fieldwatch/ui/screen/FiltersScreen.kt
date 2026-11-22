@@ -41,11 +41,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -64,7 +66,7 @@ import app.fieldwatch.domain.visibleOnPhone
 import app.fieldwatch.ui.ClassGlyphs
 import app.fieldwatch.ui.NestedTabInsets
 import app.fieldwatch.ui.NestedTopBar
-import app.fieldwatch.ui.FieldwatchUi
+import app.fieldwatch.ui.ConfigUi
 import app.fieldwatch.ui.FieldwatchViewModel
 import app.fieldwatch.ui.component.SectionCard
 import app.fieldwatch.ui.component.FieldwatchFilterChip
@@ -77,7 +79,9 @@ import app.fieldwatch.ui.theme.nightIf
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FiltersScreen(state: FieldwatchUi, vm: FieldwatchViewModel) {
+fun FiltersScreen(state: ConfigUi, vm: FieldwatchViewModel) {
+    val liveUi = vm.ui.collectAsStateWithLifecycle()
+    val arrivalsLearning by remember { derivedStateOf { liveUi.value.arrivalsLearning } }
     var presetName by remember { mutableStateOf("") }
     var pendingDelete by remember { mutableStateOf<FilterPreset?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
@@ -188,7 +192,7 @@ fun FiltersScreen(state: FieldwatchUi, vm: FieldwatchViewModel) {
             }
             FilterTopicList(
                 filter = filter,
-                arrivalsLearning = state.arrivalsLearning,
+                arrivalsLearning = arrivalsLearning,
                 onOpen = { topicName = it.name },
                 onChecked = { item, on -> vm.updateFilter { item.setEnabled(it, on) } },
             )

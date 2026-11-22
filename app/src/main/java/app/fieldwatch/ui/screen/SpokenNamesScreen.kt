@@ -42,7 +42,7 @@ import app.fieldwatch.domain.AlertVoiceWhat
 import app.fieldwatch.domain.LanguageText
 import app.fieldwatch.domain.SpokenName
 import app.fieldwatch.domain.SpokenNames
-import app.fieldwatch.ui.FieldwatchUi
+import app.fieldwatch.ui.ConfigUi
 import app.fieldwatch.ui.FieldwatchViewModel
 import app.fieldwatch.ui.NestedTabInsets
 import app.fieldwatch.ui.NestedTopBar
@@ -54,7 +54,7 @@ import app.fieldwatch.ui.component.FieldwatchSwitch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SpokenNamesScreen(
-    state: FieldwatchUi,
+    state: ConfigUi,
     vm: FieldwatchViewModel,
     onBack: () -> Unit,
 ) {
@@ -383,5 +383,5 @@ fun SpokenNameCard(
     }
 }
 
-private fun fleetTitle(state: FieldwatchUi, id: String): String =
+private fun fleetTitle(state: ConfigUi, id: String): String =
     state.fleets.firstOrNull { it.id == id }?.name ?: id

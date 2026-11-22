@@ -24,6 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableLongStateOf
@@ -45,7 +46,8 @@ import app.fieldwatch.domain.ScanPhoneFacts
 import app.fieldwatch.domain.ScanStatus
 import app.fieldwatch.domain.TakDiagFacts
 import app.fieldwatch.domain.TakPublish
-import app.fieldwatch.ui.FieldwatchUi
+import app.fieldwatch.ui.ConfigUi
+import app.fieldwatch.ui.FieldwatchViewModel
 import app.fieldwatch.ui.NestedTabInsets
 import app.fieldwatch.ui.NestedTopBar
 import app.fieldwatch.ui.component.FieldwatchActionButton
@@ -54,7 +56,8 @@ import kotlinx.coroutines.delay
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScanStatusScreen(
-    state: FieldwatchUi,
+    state: ConfigUi,
+    vm: FieldwatchViewModel,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -71,12 +74,15 @@ fun ScanStatusScreen(
     val cell by app.cells.reading.collectAsStateWithLifecycle()
     val battery by app.batteryFloor.collectAsStateWithLifecycle()
     val gnssProfile by app.gnssProfile.profile.collectAsStateWithLifecycle()
+    val liveUi = vm.ui.collectAsStateWithLifecycle()
+    val scanRadio by remember { derivedStateOf { liveUi.value.scanRadio } }
+    val radiosOnAir by remember { derivedStateOf { liveUi.value.wifiNow + liveUi.value.bleNow } }
     val nearLine = DroneNear.diag(state.settings.droneNearM, app.gpsAccFix(now), now)
     val report = ScanStatus.report(
-        radio = state.scanRadio,
+        radio = scanRadio,
         phone = scanPhoneFacts(context, state, now),
         now = now,
-        radiosOnAir = state.wifiNow + state.bleNow,
+        radiosOnAir = radiosOnAir,
         gnssRows = gnss.diagRows + GnssCalibration.diagRows(gnssProfile),
         tak = takDiag(state, app),
         cellRows = CellWatch.diagRows(cell),
@@ -155,7 +161,7 @@ fun ScanStatusScreen(
     }
 }
 
-internal fun takDiag(state: FieldwatchUi, app: FieldwatchApp): TakDiagFacts {
+internal fun takDiag(state: ConfigUi, app: FieldwatchApp): TakDiagFacts {
     val settings = state.settings
     val facts = app.tak.loopbackFacts()
     return TakDiagFacts(
@@ -168,7 +174,7 @@ internal fun takDiag(state: FieldwatchUi, app: FieldwatchApp): TakDiagFacts {
     )
 }
 
-internal fun scanPhoneFacts(context: Context, state: FieldwatchUi, now: Long): ScanPhoneFacts {
+internal fun scanPhoneFacts(context: Context, state: ConfigUi, now: Long): ScanPhoneFacts {
     val app = context.applicationContext as FieldwatchApp
     val filter = state.filter
     return ScanPhoneFacts(
