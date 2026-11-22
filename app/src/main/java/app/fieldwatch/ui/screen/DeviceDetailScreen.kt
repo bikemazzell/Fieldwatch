@@ -119,6 +119,7 @@ fun DeviceDetailScreen(
     val placeStreets by vm.placeStreetNames.collectAsStateWithLifecycle()
     LaunchedEffect(device.key) { vm.refreshPlaceStreets(device) }
     val familyHint by vm.familyHint.collectAsStateWithLifecycle()
+    val ui by vm.ui.collectAsStateWithLifecycle()
     var catalogRequest by remember(device.key) { mutableStateOf(false) }
     LaunchedEffect(device.key, device.name, device.kind, device.fleetIds) {
         catalogRequest = vm.catalogRequestVisible(device)
@@ -716,8 +717,8 @@ fun DeviceDetailScreen(
                         )
                     }
                 }
-                val phoneLat = vm.ui.value.phoneLat
-                val phoneLon = vm.ui.value.phoneLon
+                val phoneLat = ui.phoneLat
+                val phoneLon = ui.phoneLon
                 if (PayloadLocation.validCoord(device.payloadLat, device.payloadLon)) {
                     Geo.screenCoord(device.payloadLat, device.payloadLon, demoMode)?.let {
                         Meta(LanguageText.text("ui.aircraft.position"), it)
@@ -740,7 +741,7 @@ fun DeviceDetailScreen(
                         Text(range, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                val fleets = vm.ui.value.fleets
+                val fleets = ui.fleets
                 val decoded = remember(device.key, device.facts, device.fleetIds) {
                     SignatureFieldDecoder.decodeSighting(device, fleets)
                 }
