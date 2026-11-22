@@ -264,6 +264,7 @@ data class FieldwatchUi(
     val travelDeg: Double = Double.NaN,
 )
 
+@Immutable
 data class ConfigUi(
     val fleets: List<Fleet> = emptyList(),
     val filter: FilterState = FilterState(),
