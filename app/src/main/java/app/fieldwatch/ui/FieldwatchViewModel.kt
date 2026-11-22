@@ -116,6 +116,7 @@ import app.fieldwatch.domain.PairingFlood
 import app.fieldwatch.domain.PlaceMemory
 import app.fieldwatch.domain.PlaceReport
 import app.fieldwatch.domain.ListSort
+import app.fieldwatch.domain.sortedForList
 import app.fieldwatch.domain.StrengthSort
 import app.fieldwatch.domain.ViewMode
 import app.fieldwatch.domain.WatchTarget
@@ -700,6 +701,8 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         } else {
             emptySet()
         }
+        val watchedFleets = RadioBookmarks.watchedFleetIds(config.watchlist)
+        val alertKeys = RadioBookmarks.alertDeviceKeys(config.watchlist)
         val filtered = labeled.filter { device ->
             if (hiddenFlood.isNotEmpty() && device.key in hiddenFlood) return@filter false
             if (!filters.pass(
@@ -709,8 +712,8 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                     now,
                     classById,
                     watchNames.keys,
-                    RadioBookmarks.watchedFleetIds(config.watchlist),
-                    RadioBookmarks.alertDeviceKeys(config.watchlist),
+                    watchedFleets,
+                    alertKeys,
                     mineKeys,
                     placeKeys,
                 )
@@ -731,30 +734,15 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                 return@filter false
             }
             heardAgo <= persistMs || !device.gone
-        }.sortedWith(
-            when (config.settings.listSort) {
-                ListSort.STRENGTH ->
-                    compareByDescending { it.sortRssi(config.settings.strengthSort, windowMs, now) }
-                ListSort.NEWEST ->
-                    compareByDescending<Sighting> { it.lastSeen }
-                        .thenByDescending { it.sortRssi(config.settings.strengthSort, windowMs, now) }
-                ListSort.NEWEST_ALERT ->
-                    compareByDescending<Sighting> { alerts[it.key] ?: 0L }
-                        .thenByDescending { it.lastSeen }
-                ListSort.FIRST_SEEN ->
-                    compareByDescending<Sighting> { it.firstSeen }
-                        .thenByDescending { it.lastSeen }
-                ListSort.ARRIVAL ->
-                    compareBy<Sighting> { it.firstSeen }.thenBy { it.mac }
-                ListSort.NAME ->
-                    compareBy<Sighting> { d ->
-                        val names = d.fleetIds.map { fleetNames[it] ?: it }
-                        d.listLineText(config.settings.listTitleLine, names, watchNames[d.key]).lowercase()
-                    }.thenBy { it.mac }
-                ListSort.SIGNATURES ->
-                    compareByDescending<Sighting> { it.fleetIds.isNotEmpty() }
-                        .thenByDescending { it.sortRssi(config.settings.strengthSort, windowMs, now) }
-            },
+        }.sortedForList(
+            config.settings.listSort,
+            config.settings.strengthSort,
+            windowMs,
+            now,
+            alerts,
+            config.settings.listTitleLine,
+            fleetNames,
+            watchNames,
         )
         val scanRadio = ScanRadioFacts(
             scanning = stats.scanning,
@@ -769,8 +757,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
             bleHitsLastMin = stats.bleHitsLastMin,
         )
         val pathOn = config.settings.livePathOnScreen()
-        val alertKeys = if (pathOn) RadioBookmarks.alertDeviceKeys(config.watchlist) else emptySet()
-        val watchedFleets = if (pathOn) RadioBookmarks.watchedFleetIds(config.watchlist) else emptySet()
         val openPath = if (pathOn) {
             app.sits.openLivePath(alertKeys, watchedFleets, hiddenFlood)
         } else {
@@ -792,6 +778,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
             else -> SitPathPlot.livePathRadios(labeled, pathSince, alertKeys, watchedFleets, hiddenFlood)
         }
         val phone = app.currentFix()
+        val locationOn = app.systemLocationOn()
         FieldwatchUi(
             devices = labeled,
             filtered = filtered,
@@ -810,8 +797,8 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
             logLines = stats.logLines,
             throttleHint = stats.throttleHint,
             scanRadio = scanRadio,
-            scanBlocked = ScanStatus.isBlocked(scanRadio, app.systemLocationOn(), app.hasFineLocation()),
-            locationOn = app.systemLocationOn(),
+            scanBlocked = ScanStatus.isBlocked(scanRadio, locationOn, app.hasFineLocation()),
+            locationOn = locationOn,
             hiddenKnown = hiddenKnown,
             arrivalsLearning = learning,
             operatorSpanM = if (moveCtx.ready || config.filter.movingWithYou) {
