@@ -1,19 +1,9 @@
-# Sideload is non-debuggable. Shrink unused library code (Material icons,
-# Compose tooling) but do not obfuscate or optimize — same R8 shape as
-# the old debug field build, without adb run-as into app data.
+# R8 shrinks and optimizes the sideload build but does not obfuscate, so crash notes keep raw stack traces.
+# Serialization keep rules come from the kotlinx-serialization consumer rules. -printusage lists removed code.
 -dontobfuscate
--dontoptimize
-
--keep class app.fieldwatch.** { *; }
--keepclassmembers class app.fieldwatch.** { *; }
+-printusage build/outputs/mapping/r8-usage.txt
 
 -keepattributes RuntimeVisibleAnnotations, AnnotationDefault, InnerClasses, Signature, Exception, EnclosingMethod, SourceFile, LineNumberTable
 
-# config.json / signature packs
 -dontwarn kotlinx.serialization.**
--keep class kotlinx.serialization.** { *; }
--keepclassmembers class kotlinx.serialization.json.** {
-    *** Companion;
-}
-
 -dontwarn androidx.compose.**
