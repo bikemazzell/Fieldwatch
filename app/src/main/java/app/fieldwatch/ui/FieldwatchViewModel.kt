@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.location.LocationManager
 import android.net.Uri
+import androidx.compose.runtime.Immutable
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -153,6 +154,7 @@ import kotlin.math.roundToInt
 import java.io.File
 import java.util.UUID
 
+@Immutable
 data class CandidatesUi(
     val loading: Boolean = false,
     val progress: Float = 0f,
@@ -166,11 +168,13 @@ private data class FamilyLogSnap(
     val loaded: Boolean = false,
 )
 
+@Immutable
 data class PendingSettingsImport(
     val pack: SettingsPack,
     val message: String,
 )
 
+@Immutable
 data class LanguageUiState(
     val snap: app.fieldwatch.data.LanguageSnapshot = app.fieldwatch.data.LanguageSnapshot(),
     val pending: app.fieldwatch.domain.LanguagePreview? = null,
