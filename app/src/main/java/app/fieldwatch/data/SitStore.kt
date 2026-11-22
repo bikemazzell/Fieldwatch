@@ -36,8 +36,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.encodeToStream
 import java.io.File
 
 class SitStore(
@@ -438,9 +439,9 @@ class SitStore(
         synchronized(lock) { session.markClean() }
     }
 
+    @OptIn(ExperimentalSerializationApi::class)
     private suspend fun writeFile(file: SitFile) = withContext(Dispatchers.IO) {
-        val dest = File(dir, "${file.summary.id}.json")
-        dest.writeText(json.encodeToString(file))
+        writeAtomic(File(dir, "${file.summary.id}.json")) { json.encodeToStream(file, it) }
     }
 
     private suspend fun readFile(id: String): SitFile? = withContext(Dispatchers.IO) {

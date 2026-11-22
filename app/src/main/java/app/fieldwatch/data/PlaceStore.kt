@@ -241,12 +241,7 @@ class PlaceStore(private val file: File) {
             )
             val dir = file.parentFile
             if (dir != null && !dir.isDirectory) dir.mkdirs()
-            val tmp = File(file.parentFile, file.name + ".tmp")
-            tmp.writeText(text)
-            if (!tmp.renameTo(file)) {
-                file.writeText(text)
-                tmp.delete()
-            }
+            writeAtomic(file) { it.write(text.toByteArray()) }
         } catch (err: Exception) {
             synchronized(lock) { dirty = true }
             throw err
