@@ -14,7 +14,6 @@ import android.util.Log
 import app.fieldwatch.domain.Observation
 import app.fieldwatch.domain.RadioKind
 import app.fieldwatch.domain.ScanIntensity
-import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -35,7 +34,7 @@ class BleRadio(
     @Volatile private var demoted = false
     @Volatile private var restMs = 2_500L
     @Volatile private var hint = ""
-    private val hitAt = ArrayDeque<Long>()
+    private val hits = HitWindow()
 
     // Empty filter matches every advertisement but is not an "unfiltered" list,
     // which Samsung refuses while the screen is off.
@@ -152,20 +151,9 @@ class BleRadio(
 
     fun radioOn(): Boolean = manager.adapter?.isEnabled == true
 
-    fun hitsLastMinute(now: Long): Int = synchronized(hitAt) {
-        val cut = now - 60_000L
-        while (hitAt.isNotEmpty() && hitAt.first() < cut) hitAt.removeFirst()
-        hitAt.size
-    }
+    fun hitsLastMinute(now: Long): Int = hits.lastMinute(now)
 
-    private fun recordHit(now: Long) {
-        synchronized(hitAt) {
-            hitAt.addLast(now)
-            val cut = now - 60_000L
-            while (hitAt.isNotEmpty() && hitAt.first() < cut) hitAt.removeFirst()
-            while (hitAt.size > 4_000) hitAt.removeFirst()
-        }
-    }
+    private fun recordHit(now: Long) = hits.record(now)
 
     fun holding(): Boolean = !running.get()
 
