@@ -131,6 +131,7 @@ import app.fieldwatch.radio.RadioPermissions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
@@ -283,6 +284,17 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
     @Volatile private var exportNote = ""
     @Volatile private var exportPaintNs = 0L
     private var exportPump: Job? = null
+    private val exportPumpLock = Any()
+    private class ExportRequest(val progress: Float, val message: String)
+    private val exportRequests = Channel<ExportRequest>(Channel.CONFLATED)
+
+    init {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            for (request in exportRequests) {
+                if (_export.value.active) publishExport(request.progress, request.message)
+            }
+        }
+    }
     private val _placeStreets = MutableStateFlow<Map<String, String>>(emptyMap())
     val placeStreetNames: StateFlow<Map<String, String>> = _placeStreets
     val export: StateFlow<ExportUi> = _export
@@ -2118,9 +2130,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                     dir.mkdirs()
                     doc.writePlainText(file) { frac ->
                         if (!isActive) throw CancellationException()
-                        kotlinx.coroutines.runBlocking {
-                            publishExport(0.32f + 0.66f * frac, writing)
-                        }
+                        reportExport(0.32f + 0.66f * frac, writing)
                     }
                 }
                 val uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
@@ -2197,9 +2207,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                 val text = withContext(Dispatchers.Default) {
                     SitDiffPrompt.build(thisSide, second, demo) { frac ->
                         if (!isActive) throw CancellationException()
-                        kotlinx.coroutines.runBlocking {
-                            publishExport(0.36f + 0.60f * frac, building)
-                        }
+                        reportExport(0.36f + 0.60f * frac, building)
                     }
                 }
                 Intent(Intent.ACTION_SEND).apply {
@@ -2246,7 +2254,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                     val p = from + (roof - from) * fraction.coerceIn(0f, 1f)
                     if (p < last + 0.01f && fraction < 0.999f) return@tick
                     last = p
-                    kotlinx.coroutines.runBlocking { publishExport(p, work) }
+                    reportExport(p, work)
                 },
             )
             val radios = thisSide.radios + second.radios
@@ -4048,9 +4056,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                     dir.mkdirs()
                     doc.writePlainText(file) { frac ->
                         if (!isActive) throw CancellationException()
-                        kotlinx.coroutines.runBlocking {
-                            publishExport(0.48f + 0.50f * frac, writing)
-                        }
+                        reportExport(0.48f + 0.50f * frac, writing)
                     }
                 }
                 val uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
@@ -4124,7 +4130,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                     window?.endAt ?: now,
                 ),
                 onProgress = { msg ->
-                    kotlinx.coroutines.runBlocking { publishExport(lookupAt, msg) }
+                    reportExport(lookupAt, msg)
                 },
             )
             found
@@ -4197,7 +4203,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                             window?.endAt ?: now,
                         ),
                     ) { msg ->
-                        kotlinx.coroutines.runBlocking { publishExport(0.10f, msg) }
+                        reportExport(0.10f, msg)
                     }
                     publishExport(0.22f, building)
                     found
@@ -4292,7 +4298,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                             System.currentTimeMillis(),
                         ),
                     ) { msg ->
-                        kotlinx.coroutines.runBlocking { publishExport(0.2f, msg) }
+                        reportExport(0.2f, msg)
                     }
                     if (found.namesByCell.isNotEmpty()) _placeStreets.update { it + found.namesByCell }
                     publishExport(0.4f, LanguageText.text("ui.building.ai.export.prompt"))
@@ -4571,8 +4577,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                     if (total <= 0) return@render
                     if (done == total || done % 250 == 0) {
                         val pct = 0.50f + 0.45f * done.toFloat() / total.toFloat()
-                        kotlinx.coroutines.runBlocking {
-                            publishExport(
+                        reportExport(
                             pct,
                             LanguageText.text(
                                 "ui.writing.progress",
@@ -4583,7 +4588,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                                 ),
                             ),
                         )
-                        }
                     }
                 },
             )
@@ -4723,8 +4727,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                     if (total <= 0) return@render
                     if (done == total || done % 250 == 0) {
                         val pct = 0.50f + 0.45f * done.toFloat() / total.toFloat()
-                        kotlinx.coroutines.runBlocking {
-                            publishExport(
+                        reportExport(
                             pct,
                             LanguageText.text(
                                 "ui.writing.progress",
@@ -4735,7 +4738,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                                 ),
                             ),
                         )
-                        }
                     }
                 },
             )
@@ -4804,25 +4806,32 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
      * short gap so that gap does not look frozen.
      */
     private fun ensureExportPump() {
-        if (exportPump?.isActive == true) return
-        exportPump = viewModelScope.launch {
-            while (isActive) {
-                delay(400)
-                val cur = _export.value
-                if (!cur.active || cur.spinner) continue
-                val real = exportReal
-                var shown = maxOf(exportShown, real, cur.progress)
-                val cap = minOf(0.96f, real + 0.12f)
-                val curPct = (cur.progress * 100f).toInt()
-                if ((shown * 100f).toInt() <= curPct && curPct < (cap * 100f).toInt()) {
-                    shown = (curPct + 1) / 100f
+        synchronized(exportPumpLock) {
+            if (exportPump?.isActive == true) return
+            exportPump = viewModelScope.launch {
+                while (isActive) {
+                    delay(400)
+                    val cur = _export.value
+                    if (!cur.active || cur.spinner) continue
+                    val real = exportReal
+                    var shown = maxOf(exportShown, real, cur.progress)
+                    val cap = minOf(0.96f, real + 0.12f)
+                    val curPct = (cur.progress * 100f).toInt()
+                    if ((shown * 100f).toInt() <= curPct && curPct < (cap * 100f).toInt()) {
+                        shown = (curPct + 1) / 100f
+                    }
+                    exportShown = shown
+                    val note = exportNote.ifBlank { cur.message }
+                    if ((shown * 100f).toInt() == curPct && note == cur.message) continue
+                    _export.value = cur.copy(progress = shown, spinner = false, message = note)
                 }
-                exportShown = shown
-                val note = exportNote.ifBlank { cur.message }
-                if ((shown * 100f).toInt() == curPct && note == cur.message) continue
-                _export.value = cur.copy(progress = shown, spinner = false, message = note)
             }
         }
+    }
+
+    /** Non-suspend entry for progress callbacks on worker threads. The latest request wins. */
+    private fun reportExport(progress: Float, message: String) {
+        exportRequests.trySend(ExportRequest(progress, message))
     }
 
     private suspend fun publishExport(
@@ -4908,7 +4917,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
             if (shown < last + 0.004f && p < 0.999f) return@report
             last = shown
             val msg = if (p < 0.70f) laying else writing
-            kotlinx.coroutines.runBlocking { publishExport(shown, msg) }
+            reportExport(shown, msg)
         }
     }
 
