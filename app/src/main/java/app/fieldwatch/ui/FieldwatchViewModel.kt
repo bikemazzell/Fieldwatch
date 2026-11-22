@@ -2,14 +2,12 @@ package app.fieldwatch.ui
 
 import android.app.Application
 import android.content.BroadcastReceiver
-import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.location.LocationManager
 import android.net.Uri
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.fieldwatch.BuildConfig
@@ -623,14 +621,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
 
     fun shareGnssRecording(name: String) {
         val file = app.gnssRaw.file(name) ?: return
-        val uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            clipData = ClipData.newRawUri("gnss", uri)
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, LanguageText.text("ui.fieldwatch.gnss.recording"))
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
+        val intent = fileShare(app, file, "text/plain", "gnss", LanguageText.text("ui.fieldwatch.gnss.recording"))
         _export.value = ExportUi(share = intent, shareTitle = LanguageText.text("ui.gnss.recording"))
     }
 
@@ -2133,14 +2124,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                         reportExport(0.32f + 0.66f * frac, writing)
                     }
                 }
-                val uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    clipData = ClipData.newRawUri("sit-compare", uri)
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_SUBJECT, compareSubject(doc))
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+                fileShare(app, file, "text/plain", "sit-compare", compareSubject(doc))
             }.onSuccess { intent ->
                 _export.value = ExportUi(
                     active = false,
@@ -2172,14 +2156,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                 withContext(Dispatchers.Default) {
                     DebriefPdf.write(doc, file, tiles, extraTiles, reportPdf(0.38f, 0.60f, laying, writing))
                 }
-                val uri: Uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "application/pdf"
-                    clipData = ClipData.newRawUri("sit-compare", uri)
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_SUBJECT, compareSubject(doc))
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+                fileShare(app, file, "application/pdf", "sit-compare", compareSubject(doc))
             }.onSuccess { intent ->
                 _export.value = ExportUi(
                     active = false,
@@ -2210,14 +2187,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                         reportExport(0.36f + 0.60f * frac, building)
                     }
                 }
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(
-                        Intent.EXTRA_SUBJECT,
-                        "Fieldwatch sit compare AI export — ${thisSide.name} vs ${second.name}",
-                    )
-                    putExtra(Intent.EXTRA_TEXT, text)
-                }
+                textShare("Fieldwatch sit compare AI export — ${thisSide.name} vs ${second.name}", text)
             }.onSuccess { intent ->
                 _export.value = ExportUi(
                     active = false,
@@ -2994,14 +2964,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                 val dir = File(app.cacheDir, "signatures").apply { mkdirs() }
                 val file = File(dir, suggestedSignaturesName())
                 withContext(Dispatchers.IO) { file.writeText(json) }
-                val uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "application/octet-stream"
-                    clipData = ClipData.newRawUri("signatures", uri)
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_SUBJECT, LanguageText.text("ui.fieldwatch.signatures"))
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+                fileShare(app, file, "application/octet-stream", "signatures", LanguageText.text("ui.fieldwatch.signatures"))
             }.onSuccess { intent ->
                 _export.value = ExportUi(share = intent, shareTitle = LanguageText.text("ui.fieldwatch.signatures"))
             }.onFailure { err ->
@@ -3345,14 +3308,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                 val dir = File(app.cacheDir, "settings").apply { mkdirs() }
                 val file = File(dir, suggestedSettingsName())
                 withContext(Dispatchers.IO) { file.writeText(json) }
-                val uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "application/json"
-                    clipData = ClipData.newRawUri("settings", uri)
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_SUBJECT, LanguageText.text("ui.fieldwatch.settings"))
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+                fileShare(app, file, "application/json", "settings", LanguageText.text("ui.fieldwatch.settings"))
             }.onSuccess { intent ->
                 _export.value = ExportUi(share = intent, shareTitle = LanguageText.text("ui.fieldwatch.settings"))
             }.onFailure { err ->
@@ -3515,14 +3471,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                 val dir = java.io.File(app.cacheDir, "language").apply { mkdirs() }
                 val file = java.io.File(dir, LanguageReportCopy.FILE)
                 withContext(Dispatchers.IO) { file.writeText(text) }
-                val uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    clipData = ClipData.newRawUri("language-report", uri)
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_SUBJECT, LanguageReportCopy.SHARE)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+                fileShare(app, file, "text/plain", "language-report", LanguageReportCopy.SHARE)
             }.onSuccess { intent ->
                 _export.value = ExportUi(share = intent, shareTitle = LanguageReportCopy.SHARE)
             }.onFailure {
@@ -3572,14 +3521,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                 val dir = java.io.File(app.cacheDir, "language").apply { mkdirs() }
                 val file = java.io.File(dir, "fieldwatch-language-en.json")
                 withContext(Dispatchers.IO) { file.writeText(json) }
-                val uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "application/json"
-                    clipData = ClipData.newRawUri("language", uri)
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_SUBJECT, LanguageExportCopy.SHARE)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+                fileShare(app, file, "application/json", "language", LanguageExportCopy.SHARE)
             }.onSuccess { intent ->
                 _export.value = ExportUi(share = intent, shareTitle = LanguageExportCopy.SHARE)
             }.onFailure { err ->
@@ -4021,14 +3963,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                 withContext(Dispatchers.Default) {
                     DebriefPdf.write(doc, file, tiles, extraTiles, reportPdf(0.38f, 0.60f, laying, writing))
                 }
-                val uri: Uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "application/pdf"
-                    clipData = ClipData.newRawUri("debrief", uri)
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_SUBJECT, debriefSubject(doc))
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+                fileShare(app, file, "application/pdf", "debrief", debriefSubject(doc))
             }.onSuccess { intent ->
                 _export.value = ExportUi(
                     active = false,
@@ -4059,14 +3994,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                         reportExport(0.48f + 0.50f * frac, writing)
                     }
                 }
-                val uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    clipData = ClipData.newRawUri("debrief", uri)
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_SUBJECT, debriefSubject(doc))
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+                fileShare(app, file, "text/plain", "debrief", debriefSubject(doc))
             }.onSuccess { intent ->
                 _export.value = ExportUi(
                     active = false,
@@ -4253,15 +4181,11 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                         masked
                     }
                 }
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(
-                        Intent.EXTRA_SUBJECT,
-                        if (window != null) "Fieldwatch AI export — sit ${window.sitName}"
-                        else LanguageText.text("ui.fieldwatch.ai.export.last"),
-                    )
-                    putExtra(Intent.EXTRA_TEXT, text)
-                }
+                textShare(
+                    if (window != null) "Fieldwatch AI export — sit ${window.sitName}"
+                    else LanguageText.text("ui.fieldwatch.ai.export.last"),
+                    text,
+                )
             }.onSuccess { intent ->
                 _export.value = ExportUi(
                     active = false,
@@ -4337,11 +4261,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                     listOfNotNull(device.payloadUasId),
                     settings.demoMode,
                 )
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_SUBJECT, "Fieldwatch AI export — $title")
-                    putExtra(Intent.EXTRA_TEXT, text)
-                }
+                textShare("Fieldwatch AI export — $title", text)
             }.onSuccess { intent ->
                 _export.value = ExportUi(
                     active = false,
@@ -4405,11 +4325,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                     listOfNotNull(device.payloadUasId),
                     settings.demoMode,
                 )
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_SUBJECT, "Fieldwatch device detail — $title")
-                    putExtra(Intent.EXTRA_TEXT, text)
-                }
+                textShare("Fieldwatch device detail — $title", text)
             }.onSuccess { intent ->
                 _export.value = ExportUi(share = intent, shareTitle = LanguageText.text("ui.device.detail"))
             }.onFailure { err ->
@@ -4432,14 +4348,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
             runExport(LanguageText.text("ui.preparing.sit.export")) {
                 val kind = _sitExportKind.value
                 val (file, sitName) = writeSitExport(kind)
-                val uri: Uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
-                Intent(Intent.ACTION_SEND).apply {
-                    type = SitExport.mime(kind)
-                    clipData = ClipData.newRawUri("sit-export", uri)
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_SUBJECT, SitExport.subject(kind, sitName))
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+                fileShare(app, file, SitExport.mime(kind), "sit-export", SitExport.subject(kind, sitName))
             }.onSuccess { intent ->
                 _export.value = ExportUi(active = false, progress = 1f, share = intent, shareTitle = LanguageText.text("reports.sit.export"))
             }
@@ -4611,14 +4520,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
                 app.getExternalFilesDir(null)?.let { ext ->
                     runCatching { file.copyTo(File(ext, file.name), overwrite = true) }
                 }
-                val uri: Uri = FileProvider.getUriForFile(app, "${app.packageName}.files", file)
-                Intent(Intent.ACTION_SEND).apply {
-                    type = exportMime()
-                    clipData = ClipData.newRawUri("log-export", uri)
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    putExtra(Intent.EXTRA_SUBJECT, exportSubject(kind))
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+                fileShare(app, file, exportMime(), "log-export", exportSubject(kind))
             }.onSuccess { intent ->
                 _export.value = ExportUi(active = false, progress = 1f, share = intent)
             }
