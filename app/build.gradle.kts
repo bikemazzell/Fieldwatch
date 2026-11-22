@@ -68,7 +68,6 @@ android {
             }
         }
         debug {
-            applicationIdSuffix = ""
             isDebuggable = false
             isMinifyEnabled = true
             isShrinkResources = true
