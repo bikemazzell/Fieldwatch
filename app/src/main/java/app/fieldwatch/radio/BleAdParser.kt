@@ -134,15 +134,6 @@ object BleAdParser {
         return Parsed(flags, txPower, appearance, interval, deviceClass, localName, mfg, serviceData, uuids.distinct())
     }
 
-    fun flagsLabel(flags: Int): String = buildList {
-        if (flags and 0x01 != 0) add("LE Limited Discoverable")
-        if (flags and 0x02 != 0) add("LE General Discoverable")
-        if (flags and 0x04 != 0) add("BR/EDR not supported")
-        if (flags and 0x08 != 0) add("Simultaneous LE + BR/EDR (Controller)")
-        if (flags and 0x10 != 0) add("Simultaneous LE + BR/EDR (Host)")
-        if (isEmpty()) add("0x%02X".format(flags))
-    }.joinToString(", ")
-
     fun mfgDecodedFields(record: MfgRecord): List<Pair<String, String>> =
         app.fieldwatch.domain.AdvPayloadDecoder.decodeManufacturer(record).map { it.label to it.value }
 

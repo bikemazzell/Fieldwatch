@@ -329,8 +329,6 @@ class FieldwatchApp : Application() {
         uiDepth.updateAndGet { (it - 1).coerceAtLeast(0) }
     }
 
-    fun inFront(): Boolean = uiDepth.get() > 0
-
     /**
      * Silent notification for the tracker warning on screen.
      * Posted only when System notification is on. The popup is separate.
@@ -547,17 +545,6 @@ class FieldwatchApp : Application() {
                 if (!huntMotion || !sawMag || !lastCompass.isFinite()) return@synchronized
                 huntTrack.heading(lastCompass, gameOrNull(), magHealthyLocked(), System.currentTimeMillis())
             }
-        }
-    }
-
-    /**
-     * The plain walk still on screen, when this hunt is not on a fix.
-     * Null once that walk has been placed, or when Hunt is closed.
-     */
-    fun plainSnapshot(): HuntPlain? {
-        synchronized(motionLock) {
-            if (!huntMotion) return null
-            return huntTrack.plainPicture()
         }
     }
 

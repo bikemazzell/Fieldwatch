@@ -215,12 +215,6 @@ fun speakableWatchName(name: String): String =
         .trim()
         .ifBlank { "unmatched" }
 
-fun spokenWatchClass(
-    device: Sighting,
-    fleets: List<Fleet>,
-    target: WatchTarget? = null,
-): String = spokenWatchPhrase(device, fleets, AlertVoiceWhat.CLASS, target)
-
 fun spokenWatchPhrase(
     device: Sighting,
     fleets: List<Fleet>,
@@ -1888,8 +1882,6 @@ data class Sighting(
         }
     }
 
-    fun radioKindTag(): String = if (kind == RadioKind.WIFI) "AP" else "LE"
-
     fun statusCrumbs(): String = buildString {
         if (randomized) append("rand")
         if (fastPairPairing) {
@@ -2140,15 +2132,6 @@ object Palette {
 
 fun RadioKind.label(): String =
     if (this == RadioKind.WIFI) LanguageText.text("radio.wifi") else LanguageText.text("radio.ble")
-
-fun uuidShortOrFull(raw: String): String {
-    val hex = raw.filter { it.isLetterOrDigit() }.uppercase()
-    return if (hex.length == 4) {
-        "0000$hex-0000-1000-8000-00805F9B34FB"
-    } else {
-        raw.uppercase()
-    }
-}
 
 private const val BT_BASE_TAIL = "00001000800000805F9B34FB"
 

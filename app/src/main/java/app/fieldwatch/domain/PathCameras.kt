@@ -182,18 +182,6 @@ object PathCameras {
         return tally.copy(plates = plates, others = others, counts = counts, cameras = cameras)
     }
 
-    /** Marks for the path maps. A layer switch that is off leaves that list out. Gunshot detectors stay off. */
-    fun forMap(cameras: List<FlockCamera>, platesOn: Boolean, othersOn: Boolean): List<FlockCamera> {
-        if (!platesOn && !othersOn) return emptyList()
-        return cameras.filter { cam ->
-            when (cam.kind) {
-                SensorKind.PLATE -> platesOn
-                SensorKind.GUNSHOT -> false
-                else -> othersOn
-            }
-        }
-    }
-
     /**
      * Sit report and the path printed with it.
      * A layer switch that is off leaves that list out of the counts and the marks.

@@ -276,17 +276,6 @@ class PathCamerasTest {
     }
 
     @Test
-    fun theMapDropsGunshotsAndALayerThatIsOff() {
-        val flock = camera(1L, lat, lon, listOf(270), flock = true)
-        val speed = camera(6L, lat, lon, listOf(90), kind = SensorKind.SPEED)
-        val gun = camera(4L, lat, lon, emptyList(), kind = SensorKind.GUNSHOT)
-        val all = listOf(flock, speed, gun)
-        assertEquals(listOf(1L, 6L), PathCameras.forMap(all, platesOn = true, othersOn = true).map { it.key })
-        assertEquals(listOf(1L), PathCameras.forMap(all, platesOn = true, othersOn = false).map { it.key })
-        assertTrue(PathCameras.forMap(all, platesOn = false, othersOn = false).isEmpty())
-    }
-
-    @Test
     fun theCameraGlyphCyclesOnThenOff() {
         assertEquals(MapCameraMarks.OFF, MapCameraMarks.VIEW.next())
         assertEquals(MapCameraMarks.VIEW, MapCameraMarks.OFF.next())

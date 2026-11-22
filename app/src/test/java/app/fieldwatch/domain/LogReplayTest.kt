@@ -205,10 +205,6 @@ class LogReplayTest {
 
     @Test
     fun bluetoothChannelAndFrequencyStayBlank() {
-        assertEquals("", LogReplay.csvChannel(RadioKind.BLE, 0))
-        assertEquals("", LogReplay.csvFreq(RadioKind.BLE, 0))
-        assertEquals("6", LogReplay.csvChannel(RadioKind.WIFI, 6))
-        assertEquals("2437", LogReplay.csvFreq(RadioKind.WIFI, 2437))
         val blank = """{"ts":1,"kind":"BLE","mac":"AA:BB:CC:DD:EE:0B","channel":null,"freq":null,"rssi":-60}"""
         val radio = LogReplay.parse(blank).single()
         assertEquals(0, radio.channel)

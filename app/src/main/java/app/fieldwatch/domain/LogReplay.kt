@@ -57,12 +57,6 @@ object LogReplay {
     fun freqField(kind: RadioKind, frequencyMhz: Int): Any =
         if (kind == RadioKind.BLE) org.json.JSONObject.NULL else frequencyMhz
 
-    fun csvChannel(kind: RadioKind, channel: Int): String =
-        if (kind == RadioKind.BLE) "" else channel.toString()
-
-    fun csvFreq(kind: RadioKind, frequencyMhz: Int): String =
-        if (kind == RadioKind.BLE) "" else frequencyMhz.toString()
-
     private fun loggedIntOrNull(raw: String): Any {
         val text = raw.trim()
         if (text.isEmpty()) return org.json.JSONObject.NULL

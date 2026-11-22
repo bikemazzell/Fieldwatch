@@ -1274,12 +1274,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun setShowRssiBar(show: Boolean) {
-        viewModelScope.launch {
-            app.config.update { it.copy(settings = it.settings.copy(showRssiBar = show)) }
-        }
-    }
-
     fun toggleRssiBar() {
         viewModelScope.launch {
             app.config.update {
@@ -2845,14 +2839,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             app.config.update { cfg ->
                 cfg.copy(watchlist = RadioBookmarks.setMineOnRow(cfg.watchlist, id, on))
-            }
-        }
-    }
-
-    fun renameRadioBookmark(id: String, name: String) {
-        viewModelScope.launch {
-            app.config.update { cfg ->
-                cfg.copy(watchlist = RadioBookmarks.rename(cfg.watchlist, id, name))
             }
         }
     }

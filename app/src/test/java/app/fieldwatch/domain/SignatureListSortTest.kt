@@ -76,14 +76,6 @@ class SignatureListSortTest {
     }
 
     @Test
-    fun spokenWatchClassUsesFirstMatch() {
-        val axon = fleet("fleet-axon", "Axon", SignatureClass.LAW_ENFORCEMENT)
-        val device = sampleDevice(linkedSetOf("fleet-axon"))
-        assertEquals("public safety", spokenWatchClass(device, listOf(axon)))
-        assertEquals("unmatched", spokenWatchClass(device.copy(fleetIds = emptySet()), listOf(axon)))
-    }
-
-    @Test
     fun spokenWatchPhraseClassSignatureOrBoth() {
         val air = fleet("fleet-airtag", "Apple AirTags", SignatureClass.FINDER)
         val device = sampleDevice(linkedSetOf("fleet-airtag"))

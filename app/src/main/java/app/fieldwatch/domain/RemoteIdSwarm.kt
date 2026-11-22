@@ -114,23 +114,6 @@ class RemoteIdSwarm {
         publish(ep)
     }
 
-    /** Temporary. Remove after the swarm dialog review. */
-    fun previewSample() = synchronized(lock) {
-        _notice.value = Notice(
-            showDialog = true,
-            at = System.currentTimeMillis(),
-            count = 8,
-            windowSec = 19,
-            ble = 7,
-            wifi = 3,
-            types = listOf(
-                TypeCount("DJI", 5),
-                TypeCount("Autel", 2),
-                TypeCount("Skydio", 1),
-            ),
-        )
-    }
-
     fun quietsDroneClass(): Boolean = synchronized(lock) { episode != null }
 
     fun memberAt(uasId: String?): Long? = synchronized(lock) {

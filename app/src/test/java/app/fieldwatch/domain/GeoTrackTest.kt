@@ -4,20 +4,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
 
 class GeoTrackTest {
-    @Test
-    fun aPointBesideANorthLineIsThatFarOffIt() {
-        val end = northOf(28.7800, -81.3700, 40.0)
-        val side = offset(end.first, end.second, 0.0, 20.0)
-        val cross = Geo.crossTrackMeters(28.7800, -81.3700, end.first, end.second, side.first, side.second)
-        assertEquals(20.0, abs(cross), 1.5)
-    }
-
     @Test
     fun sideWobbleOnAStraightDriveDoesNotZigzag() {
         val path = mutableListOf<GpsSample>()

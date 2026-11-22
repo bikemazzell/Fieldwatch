@@ -1,7 +1,6 @@
 package app.fieldwatch.data
 
 import android.content.Context
-import app.fieldwatch.domain.CsvCells
 import app.fieldwatch.domain.LanguageText
 import app.fieldwatch.domain.Fleet
 import app.fieldwatch.domain.LogExportRadios
@@ -48,7 +47,6 @@ class LogStore(context: Context) {
     }
 
     val lineCount: Long get() = lines
-    val isPaused: Boolean get() = paused.get()
 
     @Volatile
     private var enabled = true
@@ -93,8 +91,6 @@ class LogStore(context: Context) {
         ?.filter { it.isFile && it.name.startsWith("fieldwatch-") && !it.name.contains("export") }
         ?.sortedBy { it.name }
         ?: emptyList()
-
-    fun allFiles(): List<File> = logParts()
 
     fun totalBytes(): Long = logParts().sumOf { it.length() }
 
@@ -308,34 +304,6 @@ class LogStore(context: Context) {
         if (next.exists()) next.delete()
     }
 
-    private fun csvLine(device: Sighting, names: String): String {
-        fun esc(v: String) = CsvCells.plain(v)
-        return listOf(
-            device.lastSeen.toString(),
-            iso.format(Date(device.lastSeen)),
-            device.kind.name,
-            device.mac,
-            esc(device.name),
-            device.rssi.toString(),
-            LogReplay.csvChannel(device.kind, device.channel),
-            LogReplay.csvFreq(device.kind, device.frequencyMhz),
-            device.oui,
-            esc(device.vendor.orEmpty()),
-            esc(names),
-            device.manufacturerId?.toString(16)?.uppercase().orEmpty(),
-            device.serviceUuids.joinToString("|"),
-            buildString {
-                if (device.randomized) append("RAND ")
-                if (device.hiddenSsid) append("HIDDEN ")
-            }.trim(),
-            LogReplay.advertisementField(device.rawHex, device.manufacturerDataHex),
-            device.latitude?.let { String.format(Locale.US, "%.6f", it) }.orEmpty(),
-            device.longitude?.let { String.format(Locale.US, "%.6f", it) }.orEmpty(),
-            device.vendorIeOuis.take(8).joinToString("|") { MacUtil.normalize(it) },
-            LogReplay.manufacturerField(device.manufacturerDataHex),
-        ).joinToString(",") + "\n"
-    }
-
     private fun jsonLine(device: Sighting, names: String): String {
         val obj = JSONObject()
             .put("ts", device.lastSeen)
@@ -365,18 +333,5 @@ class LogStore(context: Context) {
         private const val CSV_HEADER =
             "timestamp,iso,kind,mac,name,rssi,channel,freq,oui,vendor,fleets,mfg,uuids,flags,raw,lat,lon,vendor_ie,mfg_hex\n"
 
-        private fun skipCsvHeader(input: java.io.BufferedInputStream) {
-            input.mark(512)
-            val line = StringBuilder()
-            while (true) {
-                val b = input.read()
-                if (b < 0 || b == '\n'.code) break
-                if (b != '\r'.code) line.append(b.toChar())
-                if (line.length > 400) break
-            }
-            if (!line.startsWith("timestamp")) {
-                input.reset()
-            }
-        }
     }
 }

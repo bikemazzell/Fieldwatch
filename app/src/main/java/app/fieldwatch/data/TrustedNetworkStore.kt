@@ -159,10 +159,6 @@ class TrustedNetworkStore(private val file: File, private val scope: CoroutineSc
         }
     }
 
-    fun clearNotice() {
-        _notice.value = null
-    }
-
     fun clearImportFailed() {
         _importProblem.value = null
     }

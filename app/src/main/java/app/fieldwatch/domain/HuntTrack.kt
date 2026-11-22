@@ -290,15 +290,6 @@ class HuntTrack {
     }
 
     /**
-     * Where a pre-fix picture point sits after the walk was placed.
-     * Uses the anchor from that first fix, so a later nudge does not move it.
-     */
-    fun fromLocal(lat: Double, lon: Double): Pair<Double, Double>? {
-        if (attachGen == 0) return null
-        return shift(attachAnchorLat, attachAnchorLon, lat, lon)
-    }
-
-    /**
      * Paint the dot's current place.
      * A louder reading while the dot is still here raises that place.
      * A weaker one leaves it. About 1.5 m of movement starts the next spot.
@@ -497,11 +488,6 @@ class HuntTrack {
         val dNorth = (lat - lat0) * 110_540.0
         val dEast = (lon - lon0) * 111_320.0 * cos0
         return Triple(dEast, dNorth, hypot(dEast, dNorth))
-    }
-
-    private fun shift(lat0: Double, lon0: Double, lat: Double, lon: Double): Pair<Double, Double> {
-        val (eastM, northM, _) = offset(LOCAL_LAT, LOCAL_LON, lat, lon)
-        return project(lat0, lon0, eastM, northM)
     }
 
     private fun norm(deg: Double) = ((deg % 360.0) + 360.0) % 360.0
