@@ -1758,7 +1758,7 @@ data class GpsSample(
 
 data class PresenceSpan(
     val start: Long,
-    var end: Long?,
+    val end: Long?,
 )
 
 data class Sighting(
