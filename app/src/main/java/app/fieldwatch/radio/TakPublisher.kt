@@ -505,7 +505,26 @@ class TakPublisher(context: Context? = null) {
         }
     }
 
+    private class ResolvedDestinations(
+        val host: String,
+        val port: Int,
+        val at: Long,
+        val list: List<Pair<InetAddress, Int>>,
+    )
+
+    @Volatile private var resolved: ResolvedDestinations? = null
+
     private fun destinations(host: String, port: Int): List<Pair<InetAddress, Int>> {
+        val now = System.currentTimeMillis()
+        resolved?.let {
+            if (it.host == host && it.port == port && now - it.at in 0 until DESTINATION_TTL_MS) return it.list
+        }
+        val list = resolveDestinations(host, port)
+        if (list.isNotEmpty()) resolved = ResolvedDestinations(host, port, now, list)
+        return list
+    }
+
+    private fun resolveDestinations(host: String, port: Int): List<Pair<InetAddress, Int>> {
         val primary = runCatching { InetAddress.getByName(host) }.getOrNull() ?: return emptyList()
         val out = LinkedHashMap<String, Pair<InetAddress, Int>>()
         fun add(addr: InetAddress, p: Int) {
@@ -650,6 +669,7 @@ class TakPublisher(context: Context? = null) {
 
     companion object {
         private const val TAG = "FieldwatchTak"
+        private const val DESTINATION_TTL_MS = 30_000L
         private val LOOPBACK_V4 = byteArrayOf(127, 0, 0, 1)
         private fun PayloadOk(fix: Pair<Double, Double>): Boolean =
             app.fieldwatch.domain.PayloadLocation.validCoord(fix.first, fix.second)
