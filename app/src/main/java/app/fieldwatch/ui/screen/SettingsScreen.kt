@@ -128,6 +128,8 @@ fun SettingsScreen(
     val settings = state.settings
     val liveUi = vm.ui.collectAsStateWithLifecycle()
     val logLines by remember { derivedStateOf { liveUi.value.logLines } }
+    val phoneLat by remember { derivedStateOf { liveUi.value.phoneLat } }
+    val phoneLon by remember { derivedStateOf { liveUi.value.phoneLon } }
     val flock by vm.flockLayerUi.collectAsStateWithLifecycle()
     val sensors by vm.sensorLayerUi.collectAsStateWithLifecycle()
     val saveSignatures = rememberLauncherForActivityResult(
@@ -187,8 +189,8 @@ fun SettingsScreen(
             CellWatchPage(
                 vm,
                 settings,
-                liveUi.value.phoneLat,
-                liveUi.value.phoneLon,
+                phoneLat,
+                phoneLon,
                 onPlaceBack = { closeCellPlace = it },
                 modifier = Modifier
                     .padding(pad)
