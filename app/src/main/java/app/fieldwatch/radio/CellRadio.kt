@@ -1,5 +1,6 @@
 package app.fieldwatch.radio
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
 import android.telephony.CellIdentityNr
@@ -22,6 +23,7 @@ import app.fieldwatch.domain.CellReading
  * Do not call requestCellInfoUpdate, and do not ask for READ_PHONE_STATE.
  */
 object CellRadio {
+    @SuppressLint("MissingPermission")
     fun read(context: Context): CellReading {
         val telephony = context.getSystemService(TelephonyManager::class.java) ?: return CellReading()
         val infos = runCatching { telephony.allCellInfo }.getOrNull().orEmpty()
@@ -43,10 +45,15 @@ object CellRadio {
         )
     }
 
+    @SuppressLint("MissingPermission")
     private fun secondSim(context: Context, telephony: TelephonyManager): Boolean? = runCatching {
         val manager = context.getSystemService(SubscriptionManager::class.java) ?: return@runCatching null
         // The public list. A missing phone-state grant throws, which is "not returned".
-        val infos = manager.activeSubscriptionInfoList ?: return@runCatching null
+        val infos = try {
+            manager.activeSubscriptionInfoList
+        } catch (_: SecurityException) {
+            null
+        } ?: return@runCatching null
         if (infos.size < 2) return@runCatching false
         val primary = SubscriptionManager.getDefaultDataSubscriptionId()
         val other = infos.firstOrNull { info ->

@@ -1,5 +1,6 @@
 package app.fieldwatch.radio
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.le.ScanRecord
@@ -17,6 +18,7 @@ import app.fieldwatch.domain.toHexUpper
 import java.util.UUID
 
 object BleAdParser {
+    @SuppressLint("MissingPermission")
     fun facts(result: ScanResult): RadioFacts {
         val record = result.scanRecord
         val parsed = parse(record?.bytes)

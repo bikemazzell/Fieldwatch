@@ -1,6 +1,7 @@
 package app.fieldwatch
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -1020,6 +1021,7 @@ class FieldwatchApp : Application() {
         syncLocationUpdates()
     }
 
+    @SuppressLint("MissingPermission")
     fun startLocationUpdates() {
         if (locating || !hasFineLocation()) return
         val lm = getSystemService(LOCATION_SERVICE) as LocationManager
@@ -1142,6 +1144,7 @@ class FieldwatchApp : Application() {
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun seedLastKnown(lm: LocationManager) {
         val now = System.currentTimeMillis()
         val cands = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
