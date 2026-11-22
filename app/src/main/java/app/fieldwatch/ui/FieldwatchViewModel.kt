@@ -325,6 +325,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
     val export: StateFlow<ExportUi> = _export
     private val imports = ImportNotices(app, _export)
     private val settingsTransfer = SettingsTransfer(app, viewModelScope, _export, imports)
+    private val signatureTransfer = SignatureTransfer(app, viewModelScope, _export, imports)
     val pendingSettingsImport: StateFlow<PendingSettingsImport?> = settingsTransfer.pendingSettingsImport
     private val languages = LanguageController(app, { app.language }, viewModelScope, _export, imports::readBytes)
     val language: StateFlow<LanguageUiState> = languages.state
@@ -2720,7 +2721,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         layerFlow(list).update { it.copy(confirm = false) }
     }
 
-
     /** New install tag. A typed callsign stays. Blank keeps meaning Fieldwatch- plus the tag. */
     fun regenerateTakTag() {
         viewModelScope.launch {
@@ -2947,153 +2947,15 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun suggestedSignaturesName(): String {
-        val stamp = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
-            .format(java.util.Date())
-        return "fieldwatch-signatures-$stamp.rsi"
-    }
+    fun suggestedSignaturesName(): String = signatureTransfer.suggestedSignaturesName()
 
-    private fun signaturePackJson(): String {
-        val cfg = app.config.config.value
-        return SignatureExchange.encode(
-            SignatureExchange.exportPack(
-                fleets = cfg.fleets,
-                catalogVersion = cfg.version,
-                appVersion = BuildConfig.VERSION_NAME,
-                exportedAt = java.time.Instant.now().toString(),
-            ),
-        )
-    }
+    fun startSignatureShare() = signatureTransfer.startSignatureShare()
 
-    fun startSignatureShare() {
-        viewModelScope.launch {
-            runCatching {
-                val json = withContext(Dispatchers.Default) { signaturePackJson() }
-                val dir = File(app.cacheDir, "signatures").apply { mkdirs() }
-                val file = File(dir, suggestedSignaturesName())
-                withContext(Dispatchers.IO) { file.writeText(json) }
-                fileShare(app, file, "application/octet-stream", "signatures", LanguageText.text("ui.fieldwatch.signatures"))
-            }.onSuccess { intent ->
-                _export.value = ExportUi(share = intent, shareTitle = LanguageText.text("ui.fieldwatch.signatures"))
-            }.onFailure { err ->
-                _export.value = ExportUi(
-                    error = err.message ?: LanguageText.text("ui.could.not.export.signatures"),
-                    errorTitle = LanguageText.text("ui.could.not.export.signatures"),
-                )
-            }
-        }
-    }
+    fun saveSignaturesToUri(uri: Uri) = signatureTransfer.saveSignaturesToUri(uri)
 
-    fun saveSignaturesToUri(uri: Uri) {
-        viewModelScope.launch {
-            runCatching {
-                val json = withContext(Dispatchers.Default) { signaturePackJson() }
-                withContext(Dispatchers.IO) {
-                    app.contentResolver.openOutputStream(uri)?.use { out ->
-                        out.write(json.toByteArray(Charsets.UTF_8))
-                    } ?: error(LanguageText.text("ui.could.not.write.location"))
-                }
-            }.onSuccess {
-                _export.value = ExportUi(
-                    noticeTitle = LanguageText.text("ui.signatures.saved"),
-                    noticeMessage = LanguageText.text("ui.pack.was.written.folder"),
-                )
-            }.onFailure { err ->
-                _export.value = ExportUi(
-                    error = err.message ?: LanguageText.text("ui.could.not.save.signatures"),
-                    errorTitle = LanguageText.text("ui.could.not.save.signatures"),
-                )
-            }
-        }
-    }
+    fun updateStockCatalogFromGitHub() = signatureTransfer.updateStockCatalogFromGitHub()
 
-    fun updateStockCatalogFromGitHub() {
-        if (_export.value.active) return
-        viewModelScope.launch {
-            if (!PlaceLookup.online(app)) {
-                _export.value = ExportUi(
-                    errorTitle = LanguageText.text("ui.no.internet"),
-                    error = LanguageText.text("ui.no.internet.use.import"),
-                )
-                return@launch
-            }
-            _export.value = ExportUi(
-                active = true,
-                spinner = true,
-                message = LanguageText.text("ui.updating.stock.catalog"),
-            )
-            try {
-                val fetched = withContext(Dispatchers.IO) {
-                    CatalogRemote.fetch(userAgent = "Fieldwatch/${BuildConfig.VERSION_NAME}")
-                }
-                if (fetched is CatalogRemote.Fetch.Failed) {
-                    _export.value = catalogFetchFailure(fetched)
-                    return@launch
-                }
-                val parsed = try {
-                    SignatureExchange.parsePack((fetched as CatalogRemote.Fetch.Ok).text)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: CatalogNeedsNewerApp) {
-                    imports.showCatalogNeedsApp()
-                    return@launch
-                } catch (_: Exception) {
-                    imports.showProblem(
-                        "ui.could.not.import.catalog",
-                        LanguageText.text("catalog.failed.read"),
-                        kept = true,
-                    )
-                    return@launch
-                }
-                val result = app.config.overlayStockCatalog(parsed.pack)
-                    .copy(skippedDecode = parsed.skippedDecode)
-                if (result.error != null) {
-                    imports.showProblem("ui.could.not.import.catalog", result.error, kept = true)
-                    return@launch
-                }
-                if (!result.alreadyLatest) refreshDevicesAfterImport()
-                _export.value = if (result.alreadyLatest) {
-                    ExportUi(
-                        noticeTitle = LanguageText.text("ui.already.latest.catalog"),
-                        noticeMessage = newerNote(
-                            parsed.newer,
-                            "Already on catalog ${result.catalogVersion}. Nothing to update.",
-                        ),
-                    )
-                } else {
-                    val bits = mutableListOf<String>()
-                    if (result.updated > 0) bits += "updated ${result.updated}"
-                    if (result.added > 0) bits += "added ${result.added}"
-                    val change = if (bits.isEmpty()) LanguageText.text("ui.no.stock.rows.changed")
-                    else bits.joinToString(" · ").replaceFirstChar { it.uppercase() } + "."
-                    val skip = result.skippedDecode > 0
-                    ExportUi(
-                        noticeTitle = LanguageText.text("ui.catalog.updated"),
-                        noticeMessage = newerNote(
-                            parsed.newer,
-                            "Stock catalog is now ${result.catalogVersion}. $change " +
-                                LanguageText.text("ui.bookmarks.settings.were.not"),
-                        ),
-                        followUpTitle = if (skip) LanguageText.text("ui.signature.decoding.skipped") else null,
-                        followUpMessage = if (skip) {
-                            (LanguageText.text("ui.some.signature.field.maps") + " ") +
-                                LanguageText.text("ui.signatures.still.match.install")
-                        } else {
-                            null
-                        },
-                    )
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                imports.showProblem(
-                    "ui.could.not.import.catalog",
-                    LanguageText.text("import.failed.save"),
-                    kept = false,
-                )
-            }
-        }
-    }
+    fun importSignaturesFromUri(uri: Uri) = signatureTransfer.importSignaturesFromUri(uri)
 
     fun checkForAppUpdate() = appUpdates.checkForAppUpdate()
 
@@ -3112,54 +2974,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
 
     fun appUpdateIntentFailed() = appUpdates.appUpdateIntentFailed()
 
-    private fun newerNote(newer: Boolean, message: String): String {
-        if (!newer) return message
-        val note = "This file is newer than this app. Signatures this app understands were kept."
-        return if (message.isBlank()) note else "$message $note"
-    }
-
-    fun importSignaturesFromUri(uri: Uri) {
-        viewModelScope.launch {
-            try {
-                val summary = withContext(Dispatchers.IO) {
-                    val text = imports.readText(uri, ImportFiles.SIGNATURE_MAX)
-                    val parsed = SignatureExchange.parsePack(text)
-                    val result = app.config.importFleets(parsed.pack.fleets)
-                    if (result.error != null) error(result.error)
-                    newerNote(parsed.newer, result.summary())
-                }
-                refreshDevicesAfterImport()
-                _export.value = ExportUi(
-                    noticeTitle = LanguageText.text("ui.signatures.imported"),
-                    noticeMessage = summary,
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: CatalogNeedsNewerApp) {
-                imports.showCatalogNeedsApp()
-            } catch (e: ImportFileException) {
-                imports.showProblem("ui.could.not.import.signatures", LanguageText.text(e.key), kept = true)
-            } catch (e: IllegalArgumentException) {
-                imports.showProblem(
-                    "ui.could.not.import.signatures",
-                    e.message ?: LanguageText.text("ui.could.not.import.signatures"),
-                    kept = true,
-                )
-            } catch (e: IllegalStateException) {
-                imports.showProblem(
-                    "ui.could.not.import.signatures",
-                    e.message ?: LanguageText.text("ui.could.not.import.signatures"),
-                    kept = true,
-                )
-            } catch (_: Exception) {
-                imports.showProblem(
-                    "ui.could.not.import.signatures",
-                    LanguageText.text("import.failed.save"),
-                    kept = false,
-                )
-            }
-        }
-    }
 
     fun suggestedSettingsName(): String = settingsTransfer.suggestedSettingsName()
 
@@ -3172,7 +2986,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
     fun confirmPendingSettingsImport() = settingsTransfer.confirmPendingSettingsImport()
 
     fun dismissPendingSettingsImport() = settingsTransfer.dismissPendingSettingsImport()
-
 
     fun chooseLanguage(choice: String) = languages.chooseLanguage(choice)
 
@@ -3195,55 +3008,12 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
     fun startLanguageTemplateShare() = languages.startLanguageTemplateShare()
 
 
-
     /** Closes the catalog notice and opens the app-update check. */
     fun updateAppFromCatalogNotice() {
         consumeExportNotice()
         checkForAppUpdate()
     }
 
-
-    private fun catalogFetchFailure(failed: CatalogRemote.Fetch.Failed): ExportUi {
-        val reason = failed.reason
-        val code = failed.code
-        val titleKey = if (reason == CatalogRemote.Reason.REACH) {
-            "ui.could.not.reach.github"
-        } else {
-            "ui.could.not.import.catalog"
-        }
-        val bodyKey = when (reason) {
-            CatalogRemote.Reason.REACH -> "ui.could.not.reach.catalog"
-            CatalogRemote.Reason.TRUST -> "settings.layer.failed.trust"
-            CatalogRemote.Reason.SERVER ->
-                if (code > 0) "catalog.failed.server.code" else "catalog.failed.server"
-            CatalogRemote.Reason.LARGE -> "language.err.large"
-            CatalogRemote.Reason.EMPTY -> "catalog.failed.empty"
-            CatalogRemote.Reason.OTHER -> "ui.could.not.import.catalog.2"
-        }
-        val body = if (reason == CatalogRemote.Reason.SERVER && code > 0) {
-            LanguageText.text(bodyKey, mapOf("code" to code.toString()))
-        } else {
-            LanguageText.text(bodyKey)
-        }
-        val text = body.trim() + " " + LanguageText.text("import.failed.kept")
-        return ExportUi(errorTitle = LanguageText.text(titleKey), error = text)
-    }
-
-    /** The pack is already saved. A refresh failure must not look like a bad file. */
-    private suspend fun refreshDevicesAfterImport() {
-        try {
-            app.devices.refresh(
-                app.config.fleets,
-                app.config.settings.staleSec,
-                policy = app.config.settings.detectionPolicy(),
-                decaySec = app.config.settings.decaySec,
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            // The live list catches up on the next hear.
-        }
-    }
 
 
     fun setLogExportKind(kind: LogExportKind) {
