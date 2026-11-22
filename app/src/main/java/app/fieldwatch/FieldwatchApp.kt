@@ -57,7 +57,6 @@ import app.fieldwatch.domain.Geo
 import app.fieldwatch.domain.GpsSample
 import app.fieldwatch.domain.Hunt
 import app.fieldwatch.domain.HuntHeat
-import app.fieldwatch.domain.HuntPlain
 import app.fieldwatch.domain.HuntPose
 import app.fieldwatch.domain.HuntStepDetector
 import app.fieldwatch.domain.HuntTrack
@@ -551,14 +550,9 @@ class FieldwatchApp : Application() {
     /**
      * Steps and phone heading, only while Hunt is open.
      * [seed] places a resumed walk that was already on a fix.
-     * [plain] continues a walk that was not on a map. [plainSamples] are its hears.
      * A fresh hunt stays a local picture until two fresh fixes agree and the walk is still short.
      */
-    fun beginHuntMotion(
-        seed: Pair<Double, Double>? = null,
-        plain: HuntPlain? = null,
-        plainSamples: List<GpsSample> = emptyList(),
-    ) {
+    fun beginHuntMotion(seed: Pair<Double, Double>? = null) {
         synchronized(motionLock) {
             huntTrack.clear()
             val saved = readHuntStride()
@@ -577,10 +571,9 @@ class FieldwatchApp : Application() {
             huntMotion = true
             val now = System.currentTimeMillis()
             stepWatchAt = now
-            if (plain != null) huntTrack.resumePlain(plain, plainSamples)
-            val start = huntStartFix(if (plain != null) null else seed, lastGpsFix, lastGpsFixAt, lastGpsAcc, now)
+            val start = huntStartFix(seed, lastGpsFix, lastGpsFixAt, lastGpsAcc, now)
             if (start != null) {
-                if (seed != null && plain == null) {
+                if (seed != null) {
                     huntTrack.gps(start.first, start.second, start.third, now, fresh = true, commit = true)
                 } else {
                     val age = now - lastGpsFixAt

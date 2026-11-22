@@ -71,7 +71,6 @@ import app.fieldwatch.domain.Fleet
 import app.fieldwatch.domain.Hunt
 import app.fieldwatch.domain.HuntCue
 import app.fieldwatch.domain.HuntHeat
-import app.fieldwatch.domain.HuntPlain
 import app.fieldwatch.domain.FamilyVerdict
 import app.fieldwatch.domain.LogRadio
 import app.fieldwatch.domain.RadioBookmarks
@@ -414,7 +413,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
     /** Cloud already on the map when this session opened. New hears append after it. */
     private var huntBase = emptyList<GpsSample>()
     /** Kept only while a hunt is open. Leave clears it. */
-    private var huntPlain: HuntPlain? = null
     private val _outlineOpenClasses = MutableStateFlow<Set<String>>(emptySet())
     val outlineOpenClasses: StateFlow<Set<String>> = _outlineOpenClasses
     private val _outlineOpenSigs = MutableStateFlow<Set<String>>(emptySet())
@@ -1138,16 +1136,14 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
     fun startHunt(device: Sighting, fresh: Boolean = false) {
         val now = System.currentTimeMillis()
         val resume = HuntHeat.resumes(carriedHuntKey, device.key, fresh)
-        val plain = if (resume) huntPlain else null
-        if (!resume) huntPlain = null
         val kept = huntTrail.value
-        val seed = if (resume && plain == null) {
+        val seed = if (resume) {
             app.huntFix() ?: kept.lastOrNull()?.let { it.lat to it.lon }
         } else {
             null
         }
-        huntBase = if (resume && plain == null) kept else emptyList()
-        app.beginHuntMotion(seed, plain, if (plain != null) kept else emptyList())
+        huntBase = if (resume) kept else emptyList()
+        app.beginHuntMotion(seed)
         if (resume) {
             if (HuntHeat.level(device.rssi) != null && device.rssi > huntPeakRssi.value) {
                 huntPeakRssi.value = device.rssi
@@ -1195,7 +1191,6 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
         app.endHuntMotion()
         huntKey.value = null
         carriedHuntKey = null
-        huntPlain = null
         huntTrail.value = emptyList()
         huntBase = emptyList()
         huntFlight.pending = null
