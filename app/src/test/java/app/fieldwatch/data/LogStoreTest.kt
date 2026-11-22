@@ -119,6 +119,17 @@ class LogStoreTest {
         assertEquals(replayOf(store.logParts()), store.readRadios())
     }
 
+    @Test
+    fun aNameWithALoneSurrogateAndNonAsciiTextStillMatchesAFullReplay() = runBlocking {
+        val store = LogStore(FilesDirContext(storeTempDir("log-store-test")))
+        store.configure(LogFormat.JSON, rotateKb = 64)
+        store.readRadios()
+        store.append(sighting("AA:BB:CC:00:00:01", name = "caf\u00e9 \u65e5\u672c \uD800 \uD83D\uDE00"), fleets)
+
+        val read = store.readRadios()
+        assertEquals(replayOf(store.logParts()), read)
+    }
+
     private fun replayOf(parts: List<File>): List<LogRadio> {
         val acc = LinkedHashMap<String, LogRadio>()
         parts.forEach { file ->

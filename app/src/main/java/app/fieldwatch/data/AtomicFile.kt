@@ -6,7 +6,7 @@ import java.io.FileOutputStream
 import java.io.OutputStream
 
 internal fun writeAtomic(file: File, write: (OutputStream) -> Unit) {
-    val tmp = File(file.parentFile, file.name + ".tmp")
+    val tmp = File.createTempFile(file.name + ".", ".tmp", file.parentFile)
     try {
         FileOutputStream(tmp).use { raw ->
             val out = BufferedOutputStream(raw)

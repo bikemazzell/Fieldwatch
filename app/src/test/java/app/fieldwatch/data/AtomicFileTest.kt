@@ -34,4 +34,19 @@ class AtomicFileTest {
 
         assertEquals("new", target.readText())
     }
+
+    @Test
+    fun overlappingWritesNeverShareATempFile() {
+        val dir = storeTempDir("atomic-file-test")
+        val target = File(dir, "state.json")
+        val body = "x".repeat(200_000)
+
+        writeAtomic(target) { outer ->
+            outer.write(body.toByteArray())
+            writeAtomic(target) { it.write("inner".toByteArray()) }
+            assertEquals("inner", target.readText())
+        }
+
+        assertEquals(body, target.readText())
+    }
 }
