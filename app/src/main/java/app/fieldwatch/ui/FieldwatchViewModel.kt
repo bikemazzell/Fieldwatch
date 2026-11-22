@@ -13,11 +13,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.fieldwatch.BuildConfig
 import app.fieldwatch.FieldwatchApp
-import app.fieldwatch.domain.AppUpdate
-import app.fieldwatch.domain.AppUpdateDecision
-import app.fieldwatch.domain.AppUpdateNote
 import app.fieldwatch.domain.AppUpdatePrompt
-import app.fieldwatch.domain.AppUpdateSkip
 import app.fieldwatch.domain.AircraftTrail
 import app.fieldwatch.domain.AppSettings
 import app.fieldwatch.domain.MapBasemap
@@ -33,9 +29,6 @@ import app.fieldwatch.domain.attentionNotes
 import app.fieldwatch.domain.signatureNotes
 import app.fieldwatch.domain.detectionPolicy
 import app.fieldwatch.domain.gnssSettings
-import app.fieldwatch.data.AppUpdateClient
-import app.fieldwatch.data.AppUpdateInstall
-import app.fieldwatch.data.CatalogRemote
 import app.fieldwatch.data.DebriefPdf
 import app.fieldwatch.data.FlockFiles
 import app.fieldwatch.data.ImportFileException
@@ -92,23 +85,16 @@ import app.fieldwatch.domain.SignatureCandidates
 import app.fieldwatch.domain.SignatureFamilyHint
 import app.fieldwatch.domain.CandidateReport
 
-import app.fieldwatch.domain.CatalogNeedsNewerApp
 import app.fieldwatch.domain.SignatureClass
 import app.fieldwatch.domain.SignatureEngine
 import app.fieldwatch.domain.SignatureListSort
-import app.fieldwatch.domain.SettingsExchange
 import app.fieldwatch.domain.SettingsPack
 import app.fieldwatch.domain.CellBook
 import app.fieldwatch.domain.TrustedBook
 import app.fieldwatch.domain.TrustedNets
 import app.fieldwatch.domain.TwinHear
-import app.fieldwatch.domain.SignatureExchange
 import app.fieldwatch.domain.TakFeedStatus
 import app.fieldwatch.domain.TakInstall
-import app.fieldwatch.domain.LanguageExportCopy
-import app.fieldwatch.domain.LanguageReportCopy
-import app.fieldwatch.domain.LanguagePack
-import app.fieldwatch.domain.LanguageParse
 import app.fieldwatch.domain.LanguageText
 import app.fieldwatch.domain.ListLine
 import app.fieldwatch.domain.MacUtil
@@ -147,8 +133,6 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import java.io.File
