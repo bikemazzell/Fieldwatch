@@ -4,6 +4,19 @@ Newest first. This is Fieldwatch (`app.fieldwatch`). Each build below is what Se
 
 Fieldwatch continues the Spectre 1.2.14 field build under a new name, application id, and the MIT License. It does not replace Spectre on a phone.
 
+## Unreleased
+
+- The app file is smaller. The release APK drops from 12.5 MB to 7.7 MB.
+- GitHub catalog request on the radio page no longer crashes on Android 10, 11, and 12.
+- Saving a setting writes a file about 60% smaller, so changes save faster.
+- Sits, places, trusted networks, and the settings file are written to a new file first and then swapped in. If Fieldwatch stops during a save, the previous file stays whole.
+- Opening a radio no longer reads the whole log again.
+- The live list, alerts, and Wi-Fi scan handling do less work on the main thread. With many radios around, the screen stays smoother.
+- Settings, Filters, Reports, and the other tabs redraw only when what they show changes, not every second.
+- The radio page updates the phone position and fleet names while it is open.
+- Voice and beep alerts from the scanner and from GPS no longer change shared speech state from two threads at once.
+- The WAKE_LOCK permission is gone. Nothing used it.
+
 ## 1.2.1 — 20 November 2026
 
 - Watchlist voice speaks again after the beep. A long watchlist could beep and then drop the sentence, because the beep ended before the sentence was saved. The sentence is kept. A speech engine that has stopped is started again. Voice that was already on stays on.
