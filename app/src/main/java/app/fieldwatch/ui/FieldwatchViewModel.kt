@@ -967,7 +967,7 @@ class FieldwatchViewModel(application: Application) : AndroidViewModel(applicati
             IntentFilter(LocationManager.MODE_CHANGED_ACTION),
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Default) {
             while (true) {
                 delay(1_000)
                 val now = System.currentTimeMillis()
