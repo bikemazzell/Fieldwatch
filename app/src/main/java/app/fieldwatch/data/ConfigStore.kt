@@ -41,7 +41,6 @@ import java.io.File
 class ConfigStore(context: Context) {
     private val file = File(context.filesDir, "config.json")
     private val json = Json {
-        prettyPrint = true
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
